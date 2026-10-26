@@ -37,8 +37,7 @@ func ParseGomod(file *model.File) *model.DepGraph {
 
 	root := &model.DepGraph{Path: file.Relpath(), Project: true}
 
-	var require bool
-	var replace bool
+	var inRequire, inReplace bool
 
 	parseDepLine := func(line string) (name, version string) {
 		line = strings.TrimSpace(line)
@@ -55,72 +54,88 @@ func ParseGomod(file *model.File) *model.DepGraph {
 
 	deps := map[string]string{}
 
+	// addRequire 记录一条 require。
+	addRequire := func(line string) {
+		name, version := parseDepLine(line)
+		// version 里出现 "=>" 说明这行其实是 replace 被分错了流，
+		// 记进去会得到一个版本号叫 "=>" 的假组件。
+		if name == "" || version == "" || strings.Contains(version, "=>") {
+			return
+		}
+		deps[name] = version
+	}
+
+	// applyReplace 应用一条 replace（不含字面量 "replace" 的部分）。
+	applyReplace := func(line string) {
+		line = strings.TrimSpace(line)
+		i := strings.Index(line, "=>")
+		if i == -1 {
+			return
+		}
+		// 左边可能是 "A" 也可能是 "A v1.0.0"，组件键始终是模块路径。
+		old := strings.Fields(strings.TrimSpace(line[:i]))
+		if len(old) == 0 {
+			return
+		}
+		oldPath := strings.Trim(old[0], `'"`)
+		if _, ok := deps[oldPath]; !ok {
+			// replace 一个没被 require 的模块不会影响构建结果。
+			return
+		}
+		right := strings.Fields(strings.TrimSpace(line[i+2:]))
+		if len(right) < 2 {
+			// `=> ./local`：源码换成本地目录，模块路径与版本都不变。
+			// 原来的代码在这里把 deps 删了又不补回去，等于让这个组件消失。
+			return
+		}
+		newPath := strings.Trim(right[0], `'"`)
+		newVersion := strings.Trim(right[1], `'"`)
+		delete(deps, oldPath)
+		deps[newPath] = newVersion
+	}
+
 	file.ReadLineNoComment(&model.CommentType{
 		Simple: "//",
-	}, func(line string) {
+	}, func(raw string) {
 
-		if strings.HasPrefix(line, "module") {
-			root.Name = strings.TrimSpace(strings.TrimPrefix(line, "module"))
+		line := strings.TrimSpace(raw)
+
+		switch {
+		case line == "":
 			return
-		}
 
-		if strings.HasPrefix(line, "require") {
-			require = true
-			line = strings.TrimPrefix(line, "require")
-			if strings.TrimSpace(line) == "" {
-				return
-			}
-		}
+		case strings.HasPrefix(line, "module"):
+			root.Name = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "module")), `'"`)
 
-		if strings.HasPrefix(line, "replace") {
-			replace = true
-			line = strings.TrimPrefix(line, "replace")
-			if strings.TrimSpace(line) == "" {
-				return
-			}
-		}
+		case strings.HasPrefix(line, ")"):
+			inRequire, inReplace = false, false
 
-		if strings.HasPrefix(line, ")") {
-			require = false
-			replace = false
-			return
-		}
+		case strings.HasPrefix(line, "require"):
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "require"))
+			if rest == "(" || rest == "" {
+				inRequire, inReplace = true, false
+				return
+			}
+			// 单行写法 `require A v1`：处理完这一行就结束。
+			//
+			// 原实现把 require 置为 true 后只在遇到 ")" 时才清除，于是单行
+			// require 之后的每一行（包括后面的 replace）都被当成 require，
+			// `replace A => B v1` 会被解析成名为 A、版本为 "=>" 的组件。
+			addRequire(rest)
 
-		if require {
-			name, version := parseDepLine(line)
-			if name != "" {
-				deps[name] = version
+		case strings.HasPrefix(line, "replace"):
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "replace"))
+			if rest == "(" || rest == "" {
+				inReplace, inRequire = true, false
+				return
 			}
-			return
-		}
+			applyReplace(rest)
 
-		if replace {
-			line = strings.TrimSpace(line)
-			i := strings.Index(line, "=>")
-			if i == -1 {
-				return
-			}
-			// 左边可能是 "A" 也可能是 "A v1.0.0"，组件键始终是模块路径。
-			old := strings.Fields(strings.TrimSpace(line[:i]))
-			if len(old) == 0 {
-				return
-			}
-			oldPath := strings.Trim(old[0], `'"`)
-			if _, ok := deps[oldPath]; !ok {
-				// replace 一个没被 require 的模块不会影响构建结果。
-				return
-			}
-			right := strings.Fields(strings.TrimSpace(line[i+2:]))
-			if len(right) < 2 {
-				// `=> ./local`：源码换成本地目录，模块路径与版本都不变。
-				// 原来的代码在这里把 deps 删了又不补回去，等于让这个组件消失。
-				return
-			}
-			newPath := strings.Trim(right[0], `'"`)
-			newVersion := strings.Trim(right[1], `'"`)
-			delete(deps, oldPath)
-			deps[newPath] = newVersion
-			return
+		case inRequire:
+			addRequire(line)
+
+		case inReplace:
+			applyReplace(line)
 		}
 
 	})
