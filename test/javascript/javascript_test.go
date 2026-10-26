@@ -42,5 +42,7 @@ func Test_JavaScript(t *testing.T) {
 		{Path: "4", Result: std},
 		// simple
 		{Path: "5", Result: std},
+		// package-lock.json without package.json
+		{Path: "6", Result: tool.Dep("", "", tool.Dep("lock-only-project", "2.0.0", tool.Dep("left-pad", "1.3.0")))},
 	})
 }

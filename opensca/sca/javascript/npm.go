@@ -19,7 +19,9 @@ type PackageJson struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	// License              string            `json:"license"`
-	Develop bool `json:"dev"` // lock v3
+	Develop  bool   `json:"dev"` // lock v3
+	Link     bool   `json:"link"`
+	Resolved string `json:"resolved"`
 	// TODO 只有依赖冲突时才会使用
 	Resolutions          map[string]string `json:"resolutions"`
 	Dependencies         map[string]string `json:"dependencies"`
@@ -43,6 +45,7 @@ type PackageLock struct {
 	Version         string                     `json:"version"`
 	Dependencies    map[string]*PackageLockDep `json:"dependencies"`
 	Packages        map[string]*PackageJson    `json:"packages"`
+	File            *model.File                `json:"-"`
 }
 type PackageLockDep struct {
 	name         string
@@ -188,7 +191,7 @@ func ParsePackageJsonWithNode(pkgjson *PackageJson, nodeMap map[string]*PackageJ
 // ParsePackageJsonWithLock 借助package.lock解析package.json
 func ParsePackageJsonWithLock(pkgjson *PackageJson, pkglock *PackageLock) *model.DepGraph {
 
-	if pkglock.LockfileVersion == 3 {
+	if pkglock.LockfileVersion == 2 || pkglock.LockfileVersion == 3 {
 		return ParsePackageJsonWithLockV3(pkgjson, pkglock)
 	}
 
@@ -264,7 +267,7 @@ func ParsePackageJsonWithLock(pkgjson *PackageJson, pkglock *PackageLock) *model
 // ParsePackageJsonWithLockV3 借助package.lock(v3)解析package.json
 func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *model.DepGraph {
 
-	if pkglock.LockfileVersion != 3 {
+	if pkglock.LockfileVersion != 2 && pkglock.LockfileVersion != 3 {
 		return nil
 	}
 
@@ -290,7 +293,14 @@ func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *mod
 		if subjs == nil {
 			return nil
 		}
-		dep := _dep(name, subjs.Version, subjs.File.Relpath())
+		if subjs.Link {
+			jspath = subjs.Resolved
+			subjs = pkglock.Packages[jspath]
+			if subjs == nil {
+				return nil
+			}
+		}
+		dep := _dep(name, subjs.Version, jspath)
 		// dep.AppendLicense(subjs.License)
 		if dep.Expand == nil {
 			dep.Develop = subjs.Develop
@@ -306,6 +316,26 @@ func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *mod
 		return dep
 	}
 
+	// Importers have their own resolution base, even without member manifests.
+	workspacePaths := []string{}
+	for p := range pkglock.Packages {
+		if p != "" && !strings.Contains("/"+p+"/", "/node_modules/") {
+			workspacePaths = append(workspacePaths, p)
+		}
+	}
+	sort.Strings(workspacePaths)
+	for _, p := range workspacePaths {
+		js := pkglock.Packages[p]
+		name := js.Name
+		if name == "" {
+			name = p[strings.LastIndex(p, "/")+1:]
+		}
+		dep := _dep(name, js.Version, p)
+		dep.Project = true
+		dep.Expand = expand{js: js, path: p}
+		root.AppendChild(dep)
+	}
+
 	root.ForEachPath(func(p, n *model.DepGraph) bool {
 
 		njs := n.Expand.(expand)
@@ -318,11 +348,6 @@ func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *mod
 		}
 
 		for name := range njs.js.PeerDependencies {
-			if meta, ok := njs.js.PeerDependenciesMeta[name]; ok {
-				if meta.Optional {
-					continue
-				}
-			}
 			n.AppendChild(findDep(name, njs.path))
 		}
 
@@ -333,7 +358,6 @@ func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *mod
 		for name := range njs.js.DevDependencies {
 			dep := findDep(name, njs.path)
 			if dep != nil {
-				dep.Develop = true
 				n.AppendChild(dep)
 			}
 		}
@@ -393,10 +417,9 @@ func FindMaxVersion(version string, versions []string) string {
 func findFromNodeModules(name, basedir string, nodePathMap map[string]*PackageJson) (jspath string, js *PackageJson) {
 	const node_modules = "node_modules"
 	paths := strings.Split(strings.ReplaceAll(basedir, `\`, `/`), "/")
-	for i := range paths {
-		tail := len(paths) - i
-		dirs := paths[:tail]
-		if paths[tail-1] != node_modules {
+	for tail := len(paths); tail >= 0; tail-- {
+		dirs := append([]string(nil), paths[:tail]...)
+		if tail == 0 || paths[tail-1] != node_modules {
 			dirs = append(dirs, node_modules)
 		}
 		dirs = append(dirs, name)

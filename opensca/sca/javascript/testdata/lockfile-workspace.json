@@ -1,0 +1,31 @@
+{
+  "name": "mono",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "mono",
+      "version": "1.0.0",
+      "workspaces": [
+        "packages/*"
+      ]
+    },
+    "packages/app": {
+      "name": "app",
+      "version": "1.0.0",
+      "dependencies": {
+        "lodash": "4.17.21"
+      },
+      "optionalDependencies": {
+        "fsevents": "2.3.3"
+      }
+    },
+    "node_modules/app": {
+      "resolved": "packages/app",
+      "link": true
+    },
+    "node_modules/lodash": {
+      "version": "4.17.21"
+    }
+  }
+}

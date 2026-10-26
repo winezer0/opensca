@@ -1,0 +1,60 @@
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "demo",
+      "version": "1.0.0",
+      "dependencies": {
+        "wrapper-a": "1.0.0",
+        "wrapper-b": "1.0.0",
+        "shared": "1.0.0"
+      },
+      "devDependencies": {
+        "dev-tool": "1.0.0",
+        "shared": "1.0.0"
+      }
+    },
+    "node_modules/wrapper-a": {
+      "version": "1.0.0",
+      "dependencies": {
+        "common": "1.0.0"
+      }
+    },
+    "node_modules/wrapper-a/node_modules/common": {
+      "version": "1.0.0",
+      "dependencies": {
+        "lodash": "4.17.20"
+      }
+    },
+    "node_modules/wrapper-a/node_modules/common/node_modules/lodash": {
+      "version": "4.17.20"
+    },
+    "node_modules/wrapper-b": {
+      "version": "1.0.0",
+      "dependencies": {
+        "common": "1.0.0"
+      }
+    },
+    "node_modules/wrapper-b/node_modules/common": {
+      "version": "1.0.0",
+      "dependencies": {
+        "lodash": "4.17.21"
+      }
+    },
+    "node_modules/wrapper-b/node_modules/common/node_modules/lodash": {
+      "version": "4.17.21"
+    },
+    "node_modules/shared": {
+      "version": "1.0.0"
+    },
+    "node_modules/dev-tool": {
+      "version": "1.0.0",
+      "dev": true,
+      "dependencies": {
+        "shared": "1.0.0"
+      }
+    }
+  }
+}
