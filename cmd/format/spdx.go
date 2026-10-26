@@ -37,6 +37,12 @@ func spdxDoc(report Report) *model.SpdxDocument {
 			return true
 		}
 
+		// 项目自身作为被描述的主体。SPDX 2.3 的 documentDescribes 就是干这个的：
+		// 没有它，消费者看到的是 67 个互不相关的包，不知道哪一个是根。
+		if n == report.DepDetailGraph || n.Project {
+			doc.DocumentDescribes = append(doc.DocumentDescribes, "SPDXRef-"+n.ID)
+		}
+
 		lics := []string{}
 		for _, lic := range n.Licenses {
 			lics = append(lics, lic.ShortName)
