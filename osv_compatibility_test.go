@@ -111,7 +111,7 @@ func TestOSVCompatibility(t *testing.T) {
 			repo := filepath.Join(dir, "m2")
 			write(filepath.Join(repo, "org", "apache", "logging", "log4j", "log4j-core", version, "log4j-core-"+version+".pom"), `<project><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId><version>`+version+`</version></project>`)
 			bom := filepath.Join(project, "bom.cdx.json")
-			args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-maven-repo", repo, "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+			args := []string{"-config", configPath, "-path", project, "-offline", "-deps-only", "-maven-repo", repo, "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 			for i := 0; i < 2; i++ {
 				if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
 					t.Fatalf("OpenSCA: %v\n%s", err, out)
@@ -173,7 +173,7 @@ func TestOSVCompatibility(t *testing.T) {
 		write(filepath.Join(repo, "example", "local", "wrapper", "1.0.0", "wrapper-1.0.0.pom"), `<project><groupId>example.local</groupId><artifactId>wrapper</artifactId><version>1.0.0</version><dependencies><dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId><version>2.14.1</version></dependency></dependencies></project>`)
 		write(filepath.Join(repo, "org", "apache", "logging", "log4j", "log4j-core", "2.14.1", "log4j-core-2.14.1.pom"), `<project><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId><version>2.14.1</version></project>`)
 		bom := filepath.Join(project, "bom.cdx.json")
-		args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-maven-repo", repo, "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+		args := []string{"-config", configPath, "-path", project, "-offline", "-deps-only", "-maven-repo", repo, "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 		if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
 			t.Fatalf("OpenSCA transitive resolution: %v\n%s", err, out)
 		}
@@ -265,7 +265,7 @@ func TestOSVCompatibility(t *testing.T) {
 				write(filepath.Join(repo, "com", "google", "guava", "guava", "32.1.3-jre", "guava-32.1.3-jre.pom"), `<project><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>32.1.3-jre</version></project>`)
 			}
 			bom := filepath.Join(project, "bom.cdx.json")
-			args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+			args := []string{"-config", configPath, "-path", project, "-offline", "-deps-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 			if scenario.name == "gradle-groovy" {
 				args = append(args, "-maven-repo", filepath.Join(dir, "gradle-m2"))
 			}
@@ -395,7 +395,7 @@ snapshots:
   lodash@4.17.21: {}
 `)
 		bom := filepath.Join(project, "bom.cdx.json")
-		args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+		args := []string{"-config", configPath, "-path", project, "-offline", "-deps-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 		if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
 			t.Fatalf("OpenSCA workspace: %v\n%s", err, out)
 		}
@@ -480,7 +480,7 @@ snapshots:
 		lock := "version = 3\n\n[[package]]\nname = \"app\"\nversion = \"1.0.0\"\ndependencies = [\"serde 1.0.188\", \"serde 1.0.200\"]\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.188\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.200\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
 		write(filepath.Join(project, "Cargo.lock"), lock)
 		bom := filepath.Join(project, "bom.cdx.json")
-		args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+		args := []string{"-config", configPath, "-path", project, "-offline", "-deps-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 		if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
 			t.Fatalf("OpenSCA lost duplicate Cargo identities: %v\n%s", err, out)
 		}

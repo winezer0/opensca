@@ -90,7 +90,7 @@ func TestPackageLockSBOMOSV(t *testing.T) {
 			if err := os.WriteFile(config, []byte("{}"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			args := []string{"-config", config, "-path", project, "-offline", "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+			args := []string{"-config", config, "-path", project, "-offline", "-deps-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 			output, err := exec.CommandContext(ctx, cli, args...).CombinedOutput()
 			if tc.invalid {
 				var exit *exec.ExitError

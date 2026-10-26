@@ -1,375 +1,248 @@
-<div align="center">
-	<img alt="logo" src="/resources/logo.svg">
-  <h2>用开源的方式做开源风险治理</h2>
+# OpenSCA
 
-[![Release](https://img.shields.io/github/v/release/XmirrorSecurity/OpenSCA-cli)](https://github.com/XmirrorSecurity/OpenSCA-cli/releases)
-[![GitHub all releases](https://img.shields.io/github/downloads/XmirrorSecurity/OpenSCA-cli/total)](https://github.com/XmirrorSecurity/OpenSCA-cli/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/opensca/opensca-cli)](https://hub.docker.com/r/opensca/opensca-cli)
-[![Jetbrains Plugin](https://img.shields.io/jetbrains/plugin/v/18246)](https://plugins.jetbrains.com/plugin/18246-opensca-xcheck)
-[![VSCode Plugin](https://vsmarketplacebadges.dev/version/xmirror.opensca.svg)](https://marketplace.visualstudio.com/items?itemName=xmirror.opensca)
-[![LICENSE](https://img.shields.io/github/license/XmirrorSecurity/OpenSCA-cli)](https://github.com/XmirrorSecurity/OpenSCA-cli/blob/master/LICENSE)
-[![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/xmirrorsecurity/opensca-cli)](/go.mod)
+**原项目 README：** [中文 README](https://github.com/XmirrorSecurity/OpenSCA-cli/blob/master/README.md) · [English README](https://github.com/XmirrorSecurity/OpenSCA-cli/blob/master/.github/README.md)
 
-中文 | [English](./.github/README.md)
-</div>
+**新版文档：** 中文 · [English](README.en.md)
 
-<!-- TOC -->
-- [项目介绍](#项目介绍)
-- [检测能力](#检测能力)
-- [下载安装](#下载安装)
-  - [方式 1: 从 Releases 下载](#方式-1-从-releases-下载)
-  - [方式 2: 一键安装脚本](#方式-2-一键安装脚本)
-  - [方式 3: 使用包管理器(Homebrew)](#方式-3-使用包管理器homebrew)
-  - [方式 4: 从源码构建](#方式-4-从源码构建)
-- [使用说明](#使用说明)
-  - [参数说明](#参数说明)
-  - [配置文件忽略路径](#配置文件忽略路径)
-  - [报告格式](#报告格式)
-  - [使用样例](#使用样例)
-  - [漏洞库文件格式](#漏洞库文件格式)
-  - [漏洞库字段说明](#漏洞库字段说明)
-  - [漏洞库配置示例](#漏洞库配置示例)
-- [常见问题](#常见问题)
-  - [使用OpenSCA需要配置环境变量吗？](#使用opensca需要配置环境变量吗)
-  - [OpenSCA目前支持哪些漏洞库呢？](#opensca目前支持哪些漏洞库呢)
-  - [使用OpenSCA检测时，检测速度与哪些因素有关？](#使用opensca检测时检测速度与哪些因素有关)
-- [问题反馈\&联系我们](#问题反馈联系我们)
-- [贡献者](#贡献者)
-- [向我们贡献](#向我们贡献)
-<!-- TOC -->
+本项目是 [XmirrorSecurity/OpenSCA-cli](https://github.com/XmirrorSecurity/OpenSCA-cli) 的修改版，维护于 [winezer0/opensca](https://github.com/winezer0/opensca)。在原有依赖分析、漏洞查询和报告能力上，重点增加本地与离线解析，修复依赖图和标准 SBOM 输出，并增加 pnpm、NuGet 支持。
 
-## 项目介绍
+本文对应本仓库当前实现。**【新增】、【修改】、【修复】均相对于仓库导入的原版快照**；旧版 README、[中文手册](docs/README-zh-CN.md)和[英文手册](docs/README.md)保留作历史参考，安装地址、参数和行为以本文为准。
 
-**OpenSCA** 用来扫描项目的第三方组件依赖及漏洞信息。
+## 导航
 
-官网：[https://opensca.xmirror.cn](https://opensca.xmirror.cn)
+- [与原项目的差异](#与原项目的差异)
+- [安装与快速开始](#安装与快速开始)
+- [支持的输入](#支持的输入)
+- [新版用法](#新版用法)
+- [参数与配置](#参数与配置)
+- [输出与诊断](#输出与诊断)
+- [迁移说明与限制](#迁移说明与限制)
+- [验证与反馈](#验证与反馈)
 
-欢迎点亮**star**，鼓励下项目组的小伙伴们~
+## 与原项目的差异
 
----
+| 标记 | 功能 | 原版行为 | 本版变化与使用方式 |
+| --- | --- | --- | --- |
+| 【新增】 | 离线模式 | 缺少统一的离线控制 | `-offline` 禁用网络访问和动态构建；只接受本地输入，使用本地仓库与已有缓存 |
+| 【变更】 | 仅依赖分析 | 原参数较长 | 使用 `-deps-only` 跳过漏洞查询和 SaaS 报告上传，可免 token 导出依赖报告；配置键为 `deps_only`；需要完全离线时再加 `-offline` |
+| 【新增】 | pnpm | 无锁文件解析器 | 直接解析 `pnpm-lock.yaml` 的 5、6、9 版布局，处理 workspace、optional dependencies 和 peer 上下文，无需运行 pnpm |
+| 【新增】 | NuGet / .NET | 无对应生态解析器 | 支持 `packages.config`、C#/F#/VB 项目、解决方案及 `project.assets.json`；优先使用有效 assets，必要时可调用 `dotnet restore` |
+| 【修改】 | 动态解析 | 布尔开关 | `optional.dynamic` 改为 `auto` / `on` / `off`，兼容旧 `true` / `false`；默认 `auto` 可尝试 Maven、NuGet，其他动态解析器仍需 `on` |
+| 【新增】 | Maven 本地配置 | 缺少本地仓库选择 | 增加 `-maven-repo`、`-maven-settings`、`-maven-command`、`-profiles`、`-java-version`；缓存目录支持 `-cache-dir` |
+| 【修复】 | Maven 静态解析 | 父 POM、本地解析及 profile 激活存在缺漏 | 补充本地仓库解析、父 POM 路径和版本处理、profile 条件判断；无法完整解析时保留诊断，见下方限制 |
+| 【修复】 | npm 锁文件 | 单独输入锁文件可能无结果，嵌套依赖图可能丢失 | 支持无 `package.json` 的 `package-lock.json` v1/v2/v3，保留嵌套多版本、workspace 及开发/运行时依赖关系 |
+| 【修复】 | Go 依赖选择 | 将 `go.sum` 的历史版本混入当前依赖，重复扫描 vendor 内清单 | 静态解析优先 `vendor/modules.txt`，其次 `go.mod`，`go.sum` 仅兜底；修复 `replace`、单行语句及 `+incompatible` 版本处理 |
+| 【修复】 | CycloneDX | 组件重复、引用与依赖边不一致 | 稳定引用、组件和边去重，保留根依赖；工程节点默认不列入 `components`，可用 `-include-project` 加入 |
+| 【修复】 | SPDX / PURL | 文档字段、包引用或包身份可能不被消费者接受 | 修复 SPDX JSON 与 tag-value 文档，统一 PURL 生成；无法确定生态或具体版本时报告诊断 |
+| 【修改】 | SBOM 输入 | 扫描目录可能把已有 SBOM 再算一次 | 默认目录扫描排除 SBOM；单文件输入可自动识别，也可用 `-input-type sbom` 显式导入 |
+| 【新增】 | 完整性诊断 | 降级、跳过和未解析依赖不够直观 | 报告记录诊断，CLI 区分成功、失败和不完整；不能把“输出了 SBOM”视为“完整解析或无漏洞” |
 
-## 检测能力
+实现与兼容性测试说明见 [OSV 兼容输出与测试说明](OSV兼容输出与测试说明.md)。OpenSCA 负责依赖解析及 SBOM 输出；对接 OSV 时由用户独立运行 `osv-scanner`，本项目不会代为管理 OSV 数据库或合并其漏洞结果。
 
-`OpenSCA`现已支持以下编程语言相关的配置文件解析及对应的包管理器，后续会逐步支持更多的编程语言，丰富相关配置文件的解析。
+## 安装与快速开始
 
-| 支持语言     | 包管理器   | 解析文件                                                                 |
-| ------------ | ---------- | ------------------------------------------------------------------------ |
-| `Java`       | `Maven`    | `pom.xml`                                                                |
-| `Java`       | `Gradle`   | `.gradle` `.gradle.kts`                                                  |
-| `JavaScript` | `Npm`      | `package-lock.json` `package.json` `yarn.lock`                           |
-| `JavaScript` | `pnpm`     | `pnpm-lock.yaml`（锁格式 v5、v6、v9，支持 workspace）                       |
-| `.NET`       | `NuGet`    | `packages.config`、`project.assets.json`、`.csproj` / `.fsproj` / `.vbproj` / `.sln`（自动 restore） |
-| `PHP`        | `Composer` | `composer.json` `composer.lock`                                          |
-| `Ruby`       | `gem`      | `gemfile.lock`                                                           |
-| `Golang`     | `gomod`    | `go.mod` `go.sum` `Gopkg.toml` `Gopkg.lock`                              |
-| `Rust`       | `cargo`    | `Cargo.lock`                                                             |
-| `Erlang`     | `Rebar`    | `rebar.lock`                                                             |
-| `Python`     | `Pip`      | `Pipfile` `Pipfile.lock` `setup.py` `requirements.txt` `requirements.in` |
+从[本仓库 Releases](https://github.com/winezer0/opensca/releases)选择所需平台的构建；若没有适用构建，从源码编译。构建要求 **Go 1.25 或更高版本**，以 [go.mod](go.mod) 为准。
 
-## 下载安装
-
-OpenSCA-cli 支持 Windows、Linux、MacOS 等操作系统，支持 x86_64 和 arm64 架构。目前提供了以下几种安装方式：
-
-### 方式 1: 从 Releases 下载
-
-1. 从 [github](https://github.com/XmirrorSecurity/OpenSCA-cli/releases) 或 [gitee](https://gitee.com/XmirrorSecurity/OpenSCA-cli/releases) 或 [gitcode](https://gitcode.com/XmirrorSecurity/OpenSCA-cli/releases) 下载对应系统架构的可执行文件压缩包
-2. 解压，并运行 `opensca-cli` 可执行文件即可。
-
-### 方式 2: 一键安装脚本
-
-- Mac/Linux 用户
-    ```shell
-    curl -sSL https://raw.githubusercontent.com/XmirrorSecurity/OpenSCA-cli/master/scripts/install.sh | sh
-
-    # 如果遇到网络问题，可尝试以下命令
-    curl -sSL https://gitee.com/XmirrorSecurity/OpenSCA-cli/raw/master/scripts/install.sh | sh -s -- gitee
-    ```
-- For Windows Users(need PowerShell)
-    ```powershell
-    iex "&{$(irm https://raw.githubusercontent.com/XmirrorSecurity/OpenSCA-cli/master/scripts/install.ps1)}"
-
-    # 如遇到网络问题，可尝试以下命令
-    iex "&{$(irm https://gitee.com/XmirrorSecurity/OpenSCA-cli/raw/master/scripts/install.ps1)} gitee"
-    ```
-
-### 方式 3: 使用包管理器(Homebrew)
-
-```
-brew install opensca-cli
+```sh
+git clone https://github.com/winezer0/opensca.git
+cd opensca
+go build -o opensca .
+./opensca -version
+./opensca -path ./example -offline -deps-only -out bom.cdx.json,report.json
 ```
 
-### 方式 4: 从源码构建
+Windows PowerShell：
 
-克隆并源码编译(需要 `go 1.18` 及以上版本)
-
-```shell
-# github linux/mac
-git clone https://github.com/XmirrorSecurity/OpenSCA-cli.git opensca && cd opensca && go build
-# gitee linux/mac
-git clone https://gitee.com/XmirrorSecurity/OpenSCA-cli.git opensca && cd opensca && go build
-# gitcode linux/mac
-git clone https://gitcode.com/XmirrorSecurity/OpenSCA-cli.git opensca && cd opensca && go build
-# github windows
-git clone https://github.com/XmirrorSecurity/OpenSCA-cli.git opensca ; cd opensca ; go build
-# gitee windows
-git clone https://gitee.com/XmirrorSecurity/OpenSCA-cli.git opensca ; cd opensca ; go build
-# gitcode windows
-git clone https://gitcode.com/XmirrorSecurity/OpenSCA-cli.git opensca ; cd opensca ; go build
+```powershell
+git clone https://github.com/winezer0/opensca.git
+cd opensca
+go build -o opensca.exe .
+.\opensca.exe -version
+.\opensca.exe -path .\example -offline -deps-only -out bom.cdx.json,report.json
 ```
 
-默认生成当前系统架构的程序，如需生成其他系统架构可配置环境变量后编译
+下文以 `./opensca` 为例，Windows 改为 `.\opensca.exe`。仅解析依赖不需要云平台 token；构建下载 Go 模块、在线依赖解析及外部漏洞扫描的网络需求分别配置。
 
-- 禁用`CGO_ENABLED`
-  `CGO_ENABLED=0`
-- 指定操作系统
-  `GOOS=${OS} \\ darwin,liunx,windows`
-- 指定体系架构
-  `GOARCH=${arch} \\ amd64,arm64`
+## 支持的输入
 
-## 使用说明
+除目录外，可通过 `-path` 指定单个清单或 SBOM。原有压缩包扫描能力保留。
 
-### 参数说明
+| 生态 / 类型 | 主要输入 | 本版备注 |
+| --- | --- | --- |
+| Java / Maven | `pom.xml` | 【修改】本地仓库、profile 和动态 Maven 解析控制 |
+| Groovy / Gradle | Gradle 工程 | 沿用原有解析能力；动态解析需 `optional.dynamic: "on"` |
+| JavaScript / npm、Yarn | `package.json`、`package-lock.json`、`yarn.lock` | 【修复】npm 锁文件单独输入及依赖图 |
+| JavaScript / pnpm | `pnpm-lock.yaml` | 【新增】锁文件布局 5 / 6 / 9；同目录由 pnpm 解析后不再重复生成 npm / Yarn 图 |
+| .NET / NuGet | `packages.config`、`*.csproj`、`*.fsproj`、`*.vbproj`、`*.sln`、`project.assets.json` | 【新增】PackageReference、版本属性、中央包管理及多目标框架 assets |
+| Go | `vendor/modules.txt`、`go.mod`、`go.sum`、`Gopkg.lock` / `Gopkg.toml` | 【修复】依赖集合选择及版本解析 |
+| Python、PHP、Ruby、Rust、Erlang | 对应清单 / 锁文件 | 保留原有能力，范围见[原项目检测能力](https://github.com/XmirrorSecurity/OpenSCA-cli/blob/master/README.md#检测能力) |
+| SBOM | CycloneDX、SPDX 等原有支持格式 | 【修改】目录默认排除；显式输入按格式识别 |
 
-| 参数     | 类型     | 描述             | 使用样例                 |
-| -------- | -------- | ---------------- | ------------------------ |
-| `config` | `string` | 指定配置文件路径 | `-config config.json`    |
-| `path`   | `string` | 指定检测项目路径 | `-path ./foo`            |
-| `out`    | `string` | 根据后缀生成报告 | `-out out.json,out.html` |
-| `log`    | `string` | 指定日志文件路径 | `-log my_log.txt`        |
-| `token`  | `string` | 云端服务`token`  | `-token xxx`             |
-| `proj`   | `string` | saas项目`token`  | `-proj xxx`              |
+## 新版用法
 
-完整的检测参数需在配置文件中配置
-（*v3.0.0开始url参数不再通过命令行指定，默认为OpenSCA云漏洞库服务`https://opensca.xmirror.cn/`，也可通过配置文件指定其他数据格式相符的云漏洞库；使用过往版本可在命令行或配置文件指定url参数。）
+### 1. 仅导出依赖与 SBOM【新增】
 
-配置字段及说明详见[`config.json`](./config.json)
+```sh
+./opensca -path ./project -offline -deps-only -out bom.cdx.json,report.json
+```
 
-v3.0.2开始，OpenSCA-cli可以通过proj参数向OpenSCA SaaS同步检出结果，方便资产及风险的全局管理。
+`bom.cdx.json` 是 CycloneDX，`report.json` 是 OpenSCA 原生报告，含任务信息与诊断。**文件名后缀决定格式：普通 `.json` 不是 CycloneDX。** 去掉 `-offline` 可允许依赖解析联网，仍不查询漏洞。
 
-配置文件与命令行参数冲突时优先使用命令行输入参数
+### 2. Maven 本地解析与 profile【新增 / 修改】
 
-指定了配置文件路径但目标位置不存在文件时会在目标位置生成默认配置文件
+```sh
+./opensca -path ./java-project -offline -deps-only -maven-repo /data/m2/repository -maven-settings /data/m2/settings.xml -profiles 'prod,!test' -java-version 17 -out java.cdx.json,java-report.json
+```
 
-未指定配置文件路径会依次尝试访问以下位置:
+本地仓库选择顺序：`-maven-repo` / `java.local_repository` → `MAVEN_REPO_LOCAL` → 指定或用户默认 `settings.xml` 中的 `localRepository` → `~/.m2/repository`。离线扫描前需准备父 POM、BOM 和依赖元数据；缺失时应检查诊断。
 
-1. 工作目录下的`config.json`
-2. 用户目录下的`opensca_config.json`
-3. `opensca-cli`目录下的`config.json`
+若希望尝试动态 Maven 解析，去掉 `-offline`，保持 `optional.dynamic: "auto"` 或设为 `"on"`；自定义命令可用 `-maven-command /path/to/mvn`。动态路径的 profile 行为见[限制](#迁移说明与限制)。
 
-### 配置文件忽略路径
+### 3. npm 与 pnpm 锁文件【新增 / 修复】
 
-可在配置文件的 `optional.ignore` 中设置需要跳过的文件或目录。该字段只读取当前配置文件中的规则，不会自动读取项目中的 `.gitignore` 文件；规则语法兼容常用 `.gitignore` 写法，包括目录匹配、通配符和 `!` 反选。
+```sh
+./opensca -path ./web/package-lock.json -offline -deps-only -out npm.cdx.json
+./opensca -path ./web/pnpm-lock.yaml -offline -deps-only -out pnpm.cdx.json
+```
+
+锁文件可单独输入；扫描整个目录时可结合 `package.json` 补充工程信息。pnpm 的链接会映射到 workspace 工程节点，peer 上下文用于解析对应依赖关系。
+
+### 4. NuGet / .NET【新增】
+
+```sh
+# 先由 .NET SDK 生成 assets；此步骤可能联网并更新项目的 obj 目录
+dotnet restore ./dotnet-project/App.csproj
+./opensca -path ./dotnet-project -offline -deps-only -out nuget.cdx.json,nuget-report.json
+
+# 传统 packages.config 也可独立读取，无需 dotnet
+./opensca -path ./dotnet-project/packages.config -offline -deps-only -out packages.cdx.json
+```
+
+扫描项目时优先读取有效的 `project.assets.json`。缺失、过期或不可用时，非离线的 `auto` / `on` 模式会尝试 `dotnet restore`；失败或被禁用则回退到静态 PackageReference 清单并标记不完整。静态清单不能代替恢复后的完整传递依赖图；`packages.config` 本身仅提供扁平包清单。
+
+### 5. 对接 OSV【修改】
+
+```sh
+./opensca -path ./project -offline -deps-only -out bom.cdx.json,report.json
+# 检查 OpenSCA 的退出码和诊断后，再由已安装的 OSV-Scanner 2.x 扫描
+osv-scanner scan source --lockfile bom.cdx.json --format json --output-file osv-result.json
+```
+
+无需 bridge 或格式转换。以上 OSV 命令可联网；若需全流程离线，须另行准备 OSV-Scanner 的本地数据库并配置其离线参数。OpenSCA 的 `-offline` 只控制 OpenSCA；`-deps-only` 输出中的漏洞数量不代表 OSV 扫描结果。
+
+### 6. 显式读取已有 SBOM【修改】
+
+```sh
+./opensca -path ./existing.cdx.json -input-type sbom -offline -deps-only -out imported.cdx.json,imported-report.json
+```
+
+`auto` 模式下单个 SBOM 文件可自动识别；目录中需要扫描 SBOM 时显式使用 `-input-type sbom`。使用 `-input-type project` 可限定为工程清单。
+
+### 7. 沿用原有漏洞查询
+
+```sh
+# 原有本地漏洞库：先在 config.local.json 的 origin 中配置来源
+./opensca -path ./project -config config.local.json -out report.json,report.html
+
+# 原有云平台查询，需要自行取得可用服务的 token
+./opensca -path ./project -token YOUR_TOKEN -out report.json,report.html
+```
+
+本地 JSON 漏洞库示例，保存为 `config.local.json`：
 
 ```json
 {
+  "origin": {"json": "./db-demo.json"}
+}
+```
+
+原有 JSON / MySQL / SQLite 漏洞源和云平台配置保留，字段见 [config.json](config.json) 与 [db-demo.json](db-demo.json)。执行漏洞查询时不要添加 `-deps-only`；`-offline` 可配合本地漏洞库使用，会禁用云端访问。
+
+## 参数与配置
+
+| 参数 | 标记 | 说明 |
+| --- | --- | --- |
+| `-path PATH` | 原有 | 输入目录、清单或 SBOM 路径 |
+| `-out FILE[,FILE...]` | 原有 | 按文件后缀输出一个或多个报告 |
+| `-config FILE` | 原有 | 加载配置；命令行指定的同名项优先 |
+| `-offline` | 【新增】 | 禁用网络和动态构建，仅接受本地输入 |
+| `-deps-only` | 【变更】 | 跳过漏洞查询与 SaaS 上传 |
+| `-input-type auto\|project\|sbom` | 【新增】 | 默认自动识别，目录默认排除 SBOM |
+| `-include-project` | 【新增】 | 将工程模块也加入 CycloneDX `components` |
+| `-maven-repo PATH` | 【新增】 | Maven 本地仓库 |
+| `-maven-settings FILE` | 【新增】 | 静态解析读取的 Maven settings 文件 |
+| `-maven-command PATH` | 【新增】 | 动态解析使用的 Maven 可执行文件 |
+| `-profiles IDS` | 【新增】 | 逗号分隔的 Maven profile；`!id` 表示禁用，建议加引号 |
+| `-java-version VERSION` | 【新增】 | 静态 profile JDK 激活条件使用的版本 |
+| `-cache-dir PATH` | 【新增】 | 依赖元数据缓存，优先于 `OPENSCA_CACHE_DIR`，默认位于用户缓存目录 |
+| `-token TOKEN` / `-proj ID` | 原有 | 云平台 token 与项目 ID |
+| `-log FILE` / `-version` / `-help` | 原有 | 日志、版本、完整参数列表 |
+
+`origin` 和 `optional` 下的选项通过**配置文件**设置，当前 CLI 不提供 `-origin.*`、`-optional.*` 或 `-dynamic` 参数。仅依赖模式使用 `-deps-only` 或配置键 `deps_only`；旧名称 `-dependencies-only` / `dependencies_only` 已停用。示例保存为 `config.offline.json` 后使用 `-config config.offline.json`：
+
+```json
+{
+  "offline": true,
+  "deps_only": true,
+  "input_type": "project",
+  "cache_dir": "./.opensca-cache",
+  "out": "bom.cdx.json,report.json",
   "optional": {
-    "ignore": [
-      "JarCollection/",
-      "*.jar",
-      "!libs/keep.jar"
-    ]
+    "dynamic": "off",
+    "progress": false,
+    "dev": true,
+    "ignore": ["build/", "dist/"]
+  },
+  "java": {
+    "local_repository": "/data/m2/repository",
+    "settings": "/data/m2/settings.xml",
+    "profiles": ["prod", "!test"],
+    "jdk": "17",
+    "properties": {"env": "prod"}
   }
 }
 ```
 
-### 报告格式
+`auto` 是默认模式，Maven 可用时尝试动态解析，NuGet 缺少可用 assets 时尝试 restore；`on` 启用动态解析器；`off` 仅静态解析。`-offline` 始终禁用动态构建。`java.properties` 为静态 Maven 属性与 profile 判断提供用户属性。Windows 配置路径请用 `/` 或 JSON 转义的 `\\`。
 
-`out` 参数支持范围如下：
+## 输出与诊断
 
-| 类型     | 文件格式 | 识别的文件后缀                   |
-| -------- | -------- | -------------------------------- |
-| 检测报告 | `json`   | `.json`                          |
-|          | `xml`    | `.xml`                           |
-|          | `html`   | `.html`                          |
-|          | `sqlite` | `.sqlite`                        |
-|          | `csv`    | `.csv`                           |
-|          | `sarif`  | `.sarif`                         |
-| SBOM清单 | `spdx`   | `.spdx` `.spdx.json` `.spdx.xml` |
-|          | `cdx`    | `.cdx.json` `.cdx.xml`           |
-|          | `swid`   | `.swid.json` `.swid.xml`         |
-|          | `dsdx`   | `.dsdx` `.dsdx.json` `.dsdx.xml` |
-|          | `bomsw`  | `.bomsw.json`                    |
+| 后缀 | 格式 / 用途 | 备注 |
+| --- | --- | --- |
+| `.cdx.json` / `.cdx.xml` | CycloneDX SBOM | 【修复】标准组件与依赖图；推荐 `.cdx.json` 对接 OSV |
+| `.spdx.json` / `.spdx` | SPDX JSON / tag-value | 【修复】文档头、包引用、PURL 与关系 |
+| `.json` / `.xml` | OpenSCA 原生报告 | JSON 中查看 `task_info.error` 和 `task_info.diagnostics` |
+| `.html` / `.csv` / `.sqlite` / `.db` / `.sarif` | 原有展示、数据库与集成报告 | 沿用原有能力 |
+| `.swid.json` / `.swid.xml` / `.dsdx` 等 | 其他原有输出 | 具体分派见 [save.go](cmd/format/save.go)；`.spdx.xml` 不属于可供 OSV 使用的标准 SPDX 输出 |
 
-### 使用样例
+【新增】CycloneDX 的诊断通过 `opensca:diagnostic` 属性输出，任务错误通过 `opensca:error` 输出。建议同时保存原生 JSON，检查输入损坏、版本不确定、动态解析回退、元数据缺失等问题。
 
-```shell
-# 使用opensca-cli检测
-opensca-cli -path ${project_path} -config ${config_path} -out ${filename}.${suffix} -token ${token}
+| 退出码 | 含义 | 使用建议 |
+| --- | --- | --- |
+| `0` | 流程完成，未产生完整性诊断 | 仍需按所选模式判断是否执行了漏洞查询 |
+| `2` | 任务失败、离线输入不合法或已检测到的报告写入失败 | 检查错误和日志；可能仍有部分报告 |
+| `3` | 有解析诊断，结果可能不完整 | 检查诊断并补齐依赖元数据；不要当作“无依赖”或“无漏洞” |
 
-# 写好配置文件后也可以直接执行opensca-cli
-opensca-cli
+退出码不以漏洞数量为依据。诊断和写入错误的覆盖范围以当前实现为准，不应假定所有旧输出格式都具备同等完整性校验。
+
+## 迁移说明与限制
+
+- **更新安装来源。** 旧版的一键安装、Homebrew、Docker 和 IDE 插件入口属于原项目，不能据此认定已包含本仓库修改；本版使用上文仓库或构建。
+- **更新自动化判断。** SBOM 文件生成后仍要检查退出码和诊断；`3` 需要单独处理。目录默认忽略已有 SBOM，Go 不再把 `go.sum` 全量历史条目并入依赖，组件数量可能减少。
+- **准备离线数据。** 离线不会自动补齐本地仓库或缓存；Maven 父 POM / BOM 缺失、NuGet assets 不可用时，结果可能不完整。仅扫描子模块且父 POM 不在扫描集合或可用仓库中，仍存在解析限制。
+- **区分 Maven 静态与动态配置。** 静态 profile 支持显式启停、activeByDefault、常用 JDK / OS / 属性 / 文件条件，不能完整模拟 Maven。当前动态 Maven 路径未指定 `-profiles` 时会将所有已声明 profile 传给 Maven；需要原生条件激活时应注意该差异。`-maven-repo`、`-maven-settings`、`-java-version`、`java.properties` 主要用于静态解析，不能假定全部透传给 `mvn`。
+- **NuGet 静态解析不等于完整 MSBuild 求值。** 复杂条件、导入、版本范围及传递依赖以有效 assets 为准；允许自动 restore 时可能联网并更新项目构建产物。
+- **优先选用已验证的交换格式。** 对接 OSV 使用 `.cdx.json`，也可参考测试中的 SPDX JSON / tag-value 场景；缺少有效 PURL 的组件会提示匹配可能不完整。
+
+## 验证与反馈
+
+依赖解析和格式相关的针对性测试：
+
+```sh
+go test ./cmd/config ./cmd/format ./opensca/model ./opensca/sca/java ./opensca/sca/javascript ./opensca/sca/golang ./opensca/sca/nuget
+go test . -run '^(TestOSVCompatibility|TestPackageLockSBOMOSV)$' -count=1
 ```
 
-```shell
-# 检测当前目录的依赖信息
-docker run -ti --rm -v ${PWD}:/src opensca/opensca-cli
+第二条命令未设置 `OSV_SCANNER` 时会跳过外部消费者检查，仍验证本地依赖与输出断言；外部 OSV 检查和实际 NuGet restore 验证方式见[兼容性测试说明](OSV兼容输出与测试说明.md)及 [NuGet restore 测试](nuget_restore_test.go)。
 
-# 使用云端漏洞数据库:
-docker run -ti --rm -v ${PWD}:/src opensca/opensca-cli -token ${put_your_token_here}
-```
-
-如需在`docker`容器中使用配置文件，将`config.json`放到`src`挂载目录即可。也可以使用`-config`指定其他容器内路径。
-不同终端挂载当前目录的写法不同，常见的几种终端写法如下：
-| terminal     | pwd                   |
-| ------------ | --------------------- |
-| `bash`       | `$(pwd)`              |
-| `zsh`        | `${PWD}`              |
-| `cmd`        | `%cd%`                |
-| `powershell` | `(Get-Location).Path` |
-
-更多信息请参考 [Docker Hub 主页](https://hub.docker.com/r/opensca/opensca-cli)
-
----
-
-### 漏洞库文件格式
-
-```json
-[
-  {
-    "vendor": "org.apache.logging.log4j",
-    "product": "log4j-core",
-    "version": "[2.0-beta9,2.12.2)||[2.13.0,2.15.0)",
-    "language": "java",
-    "name": "Apache Log4j2 远程代码执行漏洞",
-    "id": "XMIRROR-2021-44228",
-    "cve_id": "CVE-2021-44228",
-    "cnnvd_id": "CNNVD-202112-799",
-    "cnvd_id": "CNVD-2021-95914",
-    "cwe_id": "CWE-502,CWE-400,CWE-20",
-    "description": "Apache Log4j是美国阿帕奇（Apache）基金会的一款基于Java的开源日志记录工具。\r\nApache Log4J 存在代码问题漏洞，攻击者可设计一个数据请求发送给使用 Apache Log4j工具的服务器，当该请求被打印成日志时就会触发远程代码执行。",
-    "description_en": "Apache Log4j2 2.0-beta9 through 2.12.1 and 2.13.0 through 2.15.0 JNDI features used in configuration, log messages, and parameters do not protect against attacker controlled LDAP and other JNDI related endpoints. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled. From log4j 2.15.0, this behavior has been disabled by default. From version 2.16.0, this functionality has been completely removed. Note that this vulnerability is specific to log4j-core and does not affect log4net, log4cxx, or other Apache Logging Services projects.",
-    "suggestion": "2.12.1及以下版本可以更新到2.12.2，其他建议更新至2.15.0或更高版本，漏洞详情可参考：https://github.com/apache/logging-log4j2/pull/608 \r\n1、临时解决方案，适用于2.10及以上版本：\r\n\t（1）设置jvm参数：“-Dlog4j2.formatMsgNoLookups=true”；\r\n\t（2）设置参数：“log4j2.formatMsgNoLookups=True”；",
-    "attack_type": "远程",
-    "release_date": "2021-12-10",
-    "security_level_id": 1,
-    "exploit_level_id": 1
-  }
-]
-```
-
-### 漏洞库字段说明
-
-| 字段                | 描述                                                          | 是否必填 |
-| :------------------ | :------------------------------------------------------------ | :------- |
-| `vendor`            | 组件厂商                                                      | 否       |
-| `product`           | 组件名                                                        | 是       |
-| `version`           | 漏洞影响版本                     (必须为范围，不能填单个版本) | 是       |
-| `language`          | 组件语言                                                      | 是       |
-| `name`              | 漏洞名                                                        | 否       |
-| `id`                | 自定义编号                                                    | 是       |
-| `cve_id`            | cve 编号                                                      | 否       |
-| `cnnvd_id`          | cnnvd 编号                                                    | 否       |
-| `cnvd_id`           | cnvd 编号                                                     | 否       |
-| `cwe_id`            | cwe 编号                                                      | 否       |
-| `description`       | 漏洞描述                                                      | 否       |
-| `description_en`    | 漏洞英文描述                                                  | 否       |
-| `suggestion`        | 漏洞修复建议                                                  | 否       |
-| `attack_type`       | 攻击方式                                                      | 否       |
-| `release_date`      | 漏洞发布日期                                                  | 否       |
-| `security_level_id` | 漏洞风险评级(1~4 风险程度递减)                                | 否       |
-| `exploit_level_id`  | 漏洞利用难度评级(-2:未知,-1:困难,0:困难,1:简单,2:普通)        | 否       |
-
-本地漏洞库中`language`字段设定值包含`java、javascript、golang、rust、php、ruby、python`
-
-`version`范围描述：
-
-| 符号          | 描述(`x`为检出的组件版本)        |
-| ------------- | -------------------------------- |
-| `[a,b]`       | `a<=x<=b`                        |
-| `(a,b)`       | `a<x<b`                          |
-| `[a,b)`       | `a<=x<b`                         |
-| `(a,b]`       | `a<x<=b`                         |
-| `(0,b)`       | `x<b`                            |
-| `(a,)`        | `x>a`                            |
-| `{a,b,c,...}` | `x=a` 或 `x=b` 或 `x=c` 或 `...` |
-
-同时位于多个范围需要用`||`连接，例如：
-`[a,b)||(b,c]`代表`a<=x<b`或`b<x<=c`，即`a<=x<=c`且`x!=b`
-也可以区间和集合混用：
-`(0,b)||{c,d}||[e,)`代表`x<b`或`x=c`或`x=d`或`x>=e`
-
-### 漏洞库配置示例
-
-```json
-{
-  "origin":{
-    "json":"db.json",
-    "mysql":{
-      "dsn":"user:password@tcp(ip:port)/dbname",
-      "table":"table_name"
-    },
-    "sqlite":{
-      "dsn":"sqlite.db",
-      "table":"table_name"
-    }
-  }
-}
-```
-
-## 常见问题
-
-### 使用OpenSCA需要配置环境变量吗？
-
-不需要。解压后直接在命令行或终端工具中执行对应命令即可开始检测。
-
-### OpenSCA目前支持哪些漏洞库呢？
-
-OpenSCA支持自主配置本地漏洞库，需要按照[漏洞库文件格式](https://opensca.xmirror.cn/docs/v1/cli.html#漏洞库文件格式)配置。
-
-同时OpenSCA提供云漏洞库服务，兼容NVD、CNVD、CNNVD等官方漏洞库。
-
-### 使用OpenSCA检测时，检测速度与哪些因素有关？
-
-检测速度与压缩包大小、网络状况和检测语言有关，通常情况下会在几秒到几分钟。
-
-v1.0.11开始在默认逻辑中新增了阿里云镜像库作为maven官方库的备用，解决了官方库连接受限导致的检测速度过慢问题。
-
-v1.0.10及更低版本使用时如遇检测速度异常慢、日志文件中有maven连接失败报错，v1.0.6-v1.0.10可在配置文件config.json中将“maven”字段作如下设置：
-
-```json
-{
-    "maven": [
-        {
-            "repo": "https://maven.aliyun.com/repository/public",
-            "user": "",
-            "password": ""
-        }
-    ]
-}
-```
-
-设置完毕后，确保配置文件和opensca-cli在同一目录下，执行opensca-cli检测命令加上-config congif.json即可，示例：
-
-```shell
-opensca-cli -token {token} -path {path} -out output.html -config config.json
-```
-
-v1.0.5及更低版本需要自行修改源码配置镜像库地址，建议升级到更高版本。
-
-**更多常见问题**，参见[常见问题](https://opensca.xmirror.cn/docs/v1/FAQ.html)。
-
-## 问题反馈&联系我们
-
-如果您在使用中遇到问题，欢迎向我们提交ISSUE。
-
-也可添加下方微信：
-
-![二维码](/resources/wechat.png)
-
-QQ技术交流群：832039395
-
-官方邮箱：<opensca@xmirror.cn>
-
-## 贡献者
-
-- 张涛
-- 张弛
-- 陈钟
-- 刘恩炙
-- 宁戈
-
-## 向我们贡献
-
-**OpenSCA** 是一款开源的软件成分分析工具，项目成员期待您的贡献。
-
-如果您对此有兴趣，请参考我们的[贡献指南](./docs/Contributing_Guideline-v1.0-zh_CN.md)。
+问题反馈请到[本仓库 Issues](https://github.com/winezer0/opensca/issues)，附版本、命令、输入清单和诊断信息，提交前移除凭据。原项目及贡献者的工作在此致谢；本项目沿用 [Apache-2.0](LICENSE) 许可证。

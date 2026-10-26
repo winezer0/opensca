@@ -167,7 +167,7 @@ func args() {
 	flag.StringVar(&cfg.Java.MavenCommand, "maven-command", cfg.Java.MavenCommand, "Maven executable path")
 	flag.StringVar(&profiles, "profiles", "", "comma-separated Maven profiles; prefix ! to disable")
 	flag.StringVar(&cfg.Java.JDK, "java-version", cfg.Java.JDK, "JDK version used for profile activation")
-	flag.BoolVar(&cfg.DependenciesOnly, "dependencies-only", cfg.DependenciesOnly, "resolve dependencies and export reports without vulnerability lookup")
+	flag.BoolVar(&cfg.DependenciesOnly, "deps-only", cfg.DependenciesOnly, "resolve dependencies and export reports without vulnerability lookup")
 	flag.BoolVar(&cfg.IncludeProject, "include-project", cfg.IncludeProject, "include project module PURLs in CycloneDX components")
 	// flag.StringVar(&cfg.Optional.Proxy, "proxy", "", "set global proxy for http requests, eg: http://127.0.0.1:7890")
 	flag.Parse()

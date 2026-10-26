@@ -138,7 +138,7 @@ func runNuGetSDKFixture(t *testing.T, ctx context.Context, major int, sdkVersion
 	run := func(name string, offline bool, wantExit int) (nugetTestBOM, string) {
 		t.Helper()
 		bom := filepath.Join(dir, name+".cdx.json")
-		args := []string{"-config", conf, "-path", entry, "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+		args := []string{"-config", conf, "-path", entry, "-deps-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
 		if offline {
 			args = append(args, "-offline")
 		}

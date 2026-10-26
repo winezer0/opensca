@@ -6,7 +6,7 @@ OpenSCA 负责依赖解析和标准 CycloneDX 输出；OSV 扫描由用户独立
 
 ```powershell
 go build -o opensca.exe .
-.\opensca.exe -path C:\project -offline -dependencies-only -maven-repo C:\Users\windows\.m2\repository -out C:\reports\bom.cdx.json
+.\opensca.exe -path C:\project -offline -deps-only -maven-repo C:\Users\windows\.m2\repository -out C:\reports\bom.cdx.json
 osv-scanner scan source --lockfile C:\reports\bom.cdx.json
 ```
 
@@ -24,7 +24,7 @@ osv-scanner scan source --lockfile C:\reports\bom.cdx.json
 | Profile | `-profiles a,!b`，支持 activeByDefault、常用 JDK 范围、OS family/arch、用户属性和文件条件；不支持的条件输出诊断。`java.properties` 提供用户属性，`-java-version` 指定 JDK |
 | 工程模块 | Maven 工程节点显式标记；默认保留 application 节点与关系，工程子模块不带 PURL；`-include-project` 可包含。metadata 根节点保留项目身份 |
 | 缓存 | `-cache-dir` / `cache_dir` > `OPENSCA_CACHE_DIR` > 系统用户缓存目录，不再写到安装目录 |
-| 纯依赖输出 | `-dependencies-only` 跳过漏洞查询和 SaaS 报告上传，不需要 token |
+| 纯依赖输出 | `-deps-only` 跳过漏洞查询和 SaaS 报告上传，不需要 token |
 | 离线与诊断 | `-offline` 禁止共享 HTTP client 联网并关闭动态构建；元数据缺失、未解析坐标、损坏或不支持版本的清单记录到诊断中。JSON 使用 `task_info.diagnostics`，CycloneDX 使用 `opensca:diagnostic` 属性 |
 | 退出码 | 0：解析完成；2：任务或 CycloneDX 写入失败；3：存在解析诊断。退出码不代表漏洞扫描结果 |
 

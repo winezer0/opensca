@@ -18,7 +18,7 @@ type Config struct {
 	InputType        string         `json:"input_type"`
 	CacheDir         string         `json:"cache_dir"`
 	Java             JavaConfig     `json:"java"`
-	DependenciesOnly bool           `json:"dependencies_only"`
+	DependenciesOnly bool           `json:"deps_only"`
 	IncludeProject   bool           `json:"include_project"`
 	Optional         OptionalConfig `json:"optional"`
 	Repo             RepoConfig     `json:"repo"`
