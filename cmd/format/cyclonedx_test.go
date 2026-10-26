@@ -6,6 +6,7 @@ import (
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/detail"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,33 @@ func TestCycloneDXWriteFailure(t *testing.T) {
 		t.Fatal("write failure reported as success")
 	}
 }
+
+func TestCycloneDXMissingPURLDiagnostic(t *testing.T) {
+	root := component("root")
+	root.Project = true
+	root.Children = []*detail.DepDetailGraph{{Dep: detail.Dep{Name: "unmapped-package", Version: "1.2.3", Language: "Unknown"}}}
+
+	bom := reportBOM(Report{DepDetailGraph: root})
+	foundComponentWithoutPURL := false
+	for _, component := range *bom.Components {
+		if component.Name == "unmapped-package" && component.PackageURL == "" {
+			foundComponentWithoutPURL = true
+		}
+	}
+	if !foundComponentWithoutPURL {
+		t.Fatalf("unmapped component should remain in the BOM without a PURL: %+v", bom.Components)
+	}
+	found := false
+	for _, property := range *bom.Properties {
+		if property.Name == "opensca:diagnostic" && strings.Contains(property.Value, "dependency has no valid PURL") && strings.Contains(property.Value, "unmapped-package@1.2.3") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing PURL diagnostic not present: %+v", bom.Properties)
+	}
+}
+
 func TestCycloneDXGraphIdentity(t *testing.T) {
 	root, a, b, c1, c2 := component("root"), component("a"), component("b"), component("c"), component("c")
 	root.Project = true

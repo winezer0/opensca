@@ -106,7 +106,26 @@ func cyclonedxbom(dep *detail.DepDetailGraph) *cyclonedx.BOM { return CycloneDXB
 func reportBOM(report Report) *cyclonedx.BOM {
 	bom := CycloneDXBOM(report.DepDetailGraph)
 	props := []cyclonedx.Property{}
+	missingPURL := map[string]bool{}
+	if report.DepDetailGraph != nil {
+		report.DepDetailGraph.ForEach(func(n *detail.DepDetailGraph) bool {
+			if n != report.DepDetailGraph && !n.Project && n.Name != "" && n.Purl() == "" {
+				identity := n.Name + "@" + n.Version
+				if !missingPURL[identity] {
+					missingPURL[identity] = true
+					props = append(props, cyclonedx.Property{
+						Name:  "opensca:diagnostic",
+						Value: "dependency has no valid PURL; OSV matching may be incomplete: " + identity,
+					})
+				}
+			}
+			return true
+		})
+	}
 	for _, issue := range report.TaskInfo.Diagnostics {
+		props = append(props, cyclonedx.Property{Name: "opensca:diagnostic", Value: issue})
+	}
+	for _, issue := range report.DepDetailGraph.Issues {
 		props = append(props, cyclonedx.Property{Name: "opensca:diagnostic", Value: issue})
 	}
 	if report.TaskInfo.ErrorString != "" {
