@@ -1,0 +1,126 @@
+{
+
+  // 检测项目路径
+  // project path
+  // support http(s)/ftp/file protocol
+  "path": "",
+
+  // 导出报告路径
+  // report path
+  // suport ext: html/json/xml/csv/sqlite/cdx/spdx/swid/dsdx
+  "out": "output.json,output.html",
+
+  // 检测日志路径
+  // log path
+  "log": "opensca.log",
+
+  // opensca 配置项
+  // opensca optional
+  "optional": {
+
+    // 开启ui
+    // open ui
+    "ui": false,
+
+    // 相同组件仅保留一条数据 检出路径合并
+    // delete duplicate components and merge path
+    "dedup": false,
+
+    // 仅检测目录(跳过压缩包)
+    // only detect directory (skip compress file)
+    "dir": false,
+
+    // 忽略指定路径(兼容 .gitignore 语法)
+    // ignore paths (compatible with .gitignore syntax)
+    "ignore": [],
+
+    // 仅保留漏洞组件
+    // only save components with vulnerability
+    "vuln": false,
+
+    // 开启进度条
+    // open progress bar
+    "progress": true,
+
+    // 保留开发组件
+    // save develop components
+    "dev": true,
+
+    // 开启 TLS 验证
+    // use tls verify, default: false
+    "tls": false,
+
+    // 全局http代理
+    // global proxy for http requests, eg: http://127.0.0.1:7890
+    "proxy": "",
+
+    // 允许动态命令
+    // allow dynamic command, eg: mvn
+    "dynamic": false
+
+  },
+
+  // 组件仓库配置
+  // repo config
+  "repo": {
+
+    // maven repo
+    "maven": [
+      {
+        "url": "https://maven.aliyun.com/repository/public",
+        // 认证信息 没有可不填
+        // auth info, not required
+        "username": "",
+        "password": ""
+      },
+      {
+        "url": "https://repo.maven.apache.org/maven2/"
+      }
+    ],
+
+    // npm repo
+    "npm": [
+      {
+        "url": "https://registry.npmmirror.com"
+      }
+    ],
+
+    // composer repo
+    "composer": [
+      {
+        "url":"https://mirrors.aliyun.com/composer/p2"
+      }
+    ]
+
+  },
+
+  // 数据库源
+  // database origin
+  "origin": {
+
+    // opensca web service url
+    "url": "https://opensca.xmirror.cn",
+    // opensca web service token
+    "token": "",
+    // opensca saas project id, not required
+    // "proj": "",
+
+    // json dbfile
+    "json": "",
+
+    // mysql origin
+    "mysql": {
+      // user:password@tcp(ip:port)/dbname
+      "dsn": "",
+      "table": ""
+    },
+
+    // sqlite origin
+    "sqlite": {
+      // sqlite dbfile
+      "dsn": "",
+      "table": ""
+    }
+
+  }
+}

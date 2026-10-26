@@ -1,0 +1,72 @@
+name: Build Binaries And Release
+
+on:
+  push:
+    tags:
+      - v*.*.*
+  workflow_dispatch:
+    inputs:
+        tag:
+            description: 'Tag to build'
+            required: true
+        log_level:
+            description: 'Log level'
+            required: false
+            default: 'info'
+
+jobs:
+  createRelease:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+
+  releases-matrix:
+    name: Release Binary
+    runs-on: ubuntu-latest
+    needs: [createRelease]
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64, 386]
+        # goarch: [amd64, arm64, 386, loong64]
+        exclude:
+          - goarch: arm64
+            goos: windows
+          - goarch: 386
+            goos: darwin
+          - goarch: 386
+            goos: windows
+          # - goarch: loong64
+          #   goos: windows
+          # - goarch: loong64
+          #   goos: darwin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set env
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: Create VERSION file
+        run: echo ${{ env.RELEASE_VERSION }} > VERSION
+      - name: Build And Release
+        uses: wangyoucao577/go-release-action@v1
+        env:
+          CGO_ENABLED: 0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          project_path: "./"
+          binary_name: opensca-cli
+          sha256sum: true
+          md5sum: false
+          extra_files: README.md config.json db-demo.json VERSION
+          ldflags: "-s -w -X 'main.version=${{ env.RELEASE_VERSION }}' "
