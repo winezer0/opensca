@@ -13,6 +13,25 @@ import (
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 )
 
+// GomodModuleName 读取 go.mod 的 module 声明。
+//
+// 用 vendor/modules.txt 建图时，项目自身的名字只能从 go.mod 拿。
+func GomodModuleName(file *model.File) string {
+	var name string
+	file.ReadLineNoComment(&model.CommentType{
+		Simple: "//",
+	}, func(line string) {
+		if name != "" {
+			return
+		}
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module") {
+			name = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "module")), `'"`)
+		}
+	})
+	return name
+}
+
 // ParseGomod 解析go.mod文件
 func ParseGomod(file *model.File) *model.DepGraph {
 
@@ -26,7 +45,10 @@ func ParseGomod(file *model.File) *model.DepGraph {
 		words := strings.Fields(line)
 		if len(words) >= 2 {
 			name = strings.Trim(words[0], `'"`)
-			version = strings.TrimSuffix(words[1], "+incompatible")
+			// +incompatible 是版本号的一部分：v6.15.9+incompatible 表示这个
+			// 主版本还没有 go.mod。剥掉它版本就和 vendor/modules.txt 对不上，
+			// OSV 也匹配不到对应公告（go.sum 里的记录同样是这个形态）。
+			version = strings.Trim(words[1], `'"`)
 		}
 		return
 	}
@@ -78,12 +100,26 @@ func ParseGomod(file *model.File) *model.DepGraph {
 			if i == -1 {
 				return
 			}
-			old := strings.TrimSpace(line[:i])
-			delete(deps, old)
-			name, version := parseDepLine(line[i+2:])
-			if name != "" {
-				deps[name] = version
+			// 左边可能是 "A" 也可能是 "A v1.0.0"，组件键始终是模块路径。
+			old := strings.Fields(strings.TrimSpace(line[:i]))
+			if len(old) == 0 {
+				return
 			}
+			oldPath := strings.Trim(old[0], `'"`)
+			if _, ok := deps[oldPath]; !ok {
+				// replace 一个没被 require 的模块不会影响构建结果。
+				return
+			}
+			right := strings.Fields(strings.TrimSpace(line[i+2:]))
+			if len(right) < 2 {
+				// `=> ./local`：源码换成本地目录，模块路径与版本都不变。
+				// 原来的代码在这里把 deps 删了又不补回去，等于让这个组件消失。
+				return
+			}
+			newPath := strings.Trim(right[0], `'"`)
+			newVersion := strings.Trim(right[1], `'"`)
+			delete(deps, oldPath)
+			deps[newPath] = newVersion
 			return
 		}
 
@@ -100,6 +136,9 @@ func ParseGomod(file *model.File) *model.DepGraph {
 }
 
 // ParseGosum 解析go.sum文件
+//
+// 只在没有 go.mod 可读时作为兜底使用。go.sum 记录的是历史上解析过的所有
+// module@version（本工程 1177 行），不是最终选中并参与构建的集合。
 func ParseGosum(file *model.File) *model.DepGraph {
 
 	depMap := map[string]string{}
@@ -108,8 +147,9 @@ func ParseGosum(file *model.File) *model.DepGraph {
 		words := strings.Fields(line)
 		if len(words) >= 2 {
 			name := strings.Trim(words[0], `'"`)
+			// go.sum 会同时记录 module 与 module/go.mod 两种条目，去掉后者；
+			// 但 +incompatible 属于版本号，必须保留。
 			version := strings.TrimSuffix(words[1], "/go.mod")
-			version = strings.TrimSuffix(version, "+incompatible")
 			depMap[name] = version
 		}
 	})
@@ -132,7 +172,7 @@ func ParseGosum(file *model.File) *model.DepGraph {
 // GoModGraph 调用 go mod graph 解析依赖
 func GoModGraph(ctx context.Context, modfile *model.File) *model.DepGraph {
 
-	if !config.Conf().Optional.Dynamic {
+	if !config.Conf().Optional.Dynamic.Enabled() {
 		return nil
 	}
 
