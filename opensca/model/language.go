@@ -18,6 +18,7 @@ const (
 	Lan_Rust       Language = "Rust"
 	Lan_Erlang     Language = "Erlang"
 	Lan_Python     Language = "Python"
+	Lan_DotNet     Language = "DotNet"
 )
 
 var purlRmap = map[string]Language{
@@ -29,6 +30,7 @@ var purlRmap = map[string]Language{
 	"npm":      Lan_JavaScript,
 	"pypi":     Lan_Python,
 	"hex":      Lan_Erlang,
+	"nuget":    Lan_DotNet,
 }
 
 var purlMap = map[Language]string{}

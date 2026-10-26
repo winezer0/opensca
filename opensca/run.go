@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -117,12 +116,6 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 	}
 
 	result.Size, result.Error = walk.Walk(ctx, arg.Name, arg.DataOrigin, func(relpath string) bool {
-		base := strings.ToLower(filepath.Base(relpath))
-		switch base {
-		case "pnpm-lock.yaml", "packages.config":
-			model.AddDiagnostic(ctx, fmt.Sprintf("unsupported dependency manifest %s; dependency data may be incomplete", base))
-		}
-
 		if arg.ExtractFileFilter != nil && arg.ExtractFileFilter(relpath) {
 			return true
 		}

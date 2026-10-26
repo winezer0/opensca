@@ -83,6 +83,11 @@ func TestOSVCompatibility(t *testing.T) {
 		"yarn-v1":                 {"npm", "lodash", "4.17.21", "OSV-TEST-1007"},
 		"gradle-groovy":           {"Maven", "com.google.guava:guava", "32.1.3-jre", "OSV-TEST-1008"},
 		"npm-workspaces-monorepo": {"npm", "lodash", "4.17.21", "OSV-TEST-1009"},
+		"pnpm-v5-lockfile":        {"npm", "lodash", "4.17.21", "OSV-TEST-1010"},
+		"pnpm-v6-lockfile":        {"npm", "lodash", "4.17.21", "OSV-TEST-1011"},
+		"pnpm-v9-lockfile":        {"npm", "lodash", "4.17.21", "OSV-TEST-1012"},
+		"nuget-packages-config":   {"NuGet", "Newtonsoft.Json", "13.0.1", "OSV-TEST-1013"},
+		"nuget-assets":            {"NuGet", "Newtonsoft.Json", "13.0.1", "OSV-TEST-1014"},
 	}
 	for _, issue := range issues {
 		record := `{"schema_version":"1.6.0","id":"` + issue.id + `","modified":"2024-01-01T00:00:00Z","published":"2024-01-01T00:00:00Z","affected":[{"package":{"ecosystem":"` + issue.eco + `","name":"` + issue.name + `"},"versions":["` + issue.version + `"]}]}`
@@ -216,7 +221,7 @@ func TestOSVCompatibility(t *testing.T) {
 	// osv-scanner. The input lockfiles make these scenarios deterministic.
 	scenarios := []struct {
 		name, ecosystem, relpath, contents, wantPURL string
-		unsupported                                  bool
+		incomplete                                   bool
 	}{
 		{"npm-scoped", "npm", "package.json", `{"name":"app","version":"1.0.0","dependencies":{"@acme/demo":"1.2.3"}}` + "\n", "pkg:npm/%40acme/demo@1.2.3", false},
 		{"npm-workspaces-monorepo", "npm", "package.json", `{"name":"mono","version":"1.0.0","private":true,"workspaces":["packages/app"]}` + "\n", "pkg:npm/lodash@4.17.21", false},
@@ -227,8 +232,16 @@ func TestOSVCompatibility(t *testing.T) {
 		{"composer-lock", "Packagist", "composer.lock", `{"packages":[{"name":"psr/log","version":"3.0.0"}]}` + "\n", "pkg:composer/psr/log@3.0.0", false},
 		{"rubygems-lock", "RubyGems", "Gemfile.lock", "GEM\n  specs:\n    rack (3.0.8)\n\nPLATFORMS\n  x64-mingw-ucrt\n\nDEPENDENCIES\n  rack\n", "pkg:gem/rack@3.0.8", false},
 		{"cargo-lock", "crates.io", "Cargo.lock", "version = 3\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.188\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n", "pkg:cargo/serde@1.0.188", false},
-		{"pnpm-v6-lockfile", "npm", "pnpm-lock.yaml", "lockfileVersion: '6.0'\n\nimporters:\n  .:\n    dependencies:\n      lodash:\n        specifier: 4.17.21\n        version: 4.17.21\n", "", true},
-		{"nuget-packages-config", "NuGet", "packages.config", `<?xml version="1.0" encoding="utf-8"?><packages><package id="Newtonsoft.Json" version="13.0.1" targetFramework="net45" /></packages>`, "", true},
+		{"pnpm-v5-lockfile", "npm", "pnpm-lock.yaml", "lockfileVersion: 5.4\ndependencies: {lodash: 4.17.21}\npackages:\n  /lodash/4.17.21: {}\n", "pkg:npm/lodash@4.17.21", false},
+		{"pnpm-v6-lockfile", "npm", "pnpm-lock.yaml", "lockfileVersion: '6.0'\nimporters:\n  .:\n    dependencies:\n      lodash: {specifier: ^4, version: 4.17.21}\npackages:\n  /lodash@4.17.21: {}\n", "pkg:npm/lodash@4.17.21", false},
+		{"pnpm-v9-lockfile", "npm", "pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      lodash: {specifier: ^4, version: 4.17.21}\npackages:\n  lodash@4.17.21: {}\nsnapshots:\n  lodash@4.17.21: {}\n", "pkg:npm/lodash@4.17.21", false},
+		{"nuget-packages-config", "NuGet", "packages.config", `<?xml version="1.0" encoding="utf-8"?><packages><package id="Newtonsoft.Json" version="13.0.1" targetFramework="net45" /></packages>`, "pkg:nuget/Newtonsoft.Json@13.0.1", false},
+		{"nuget-assets", "NuGet", "project.assets.json", `{"version":3,"targets":{"net8.0":{"Newtonsoft.Json/13.0.1":{"type":"package"}}},"libraries":{"Newtonsoft.Json/13.0.1":{"type":"package"}},"project":{"restore":{"projectName":"App"},"frameworks":{"net8.0":{"dependencies":{"Newtonsoft.Json":{"target":"Package","version":"[13.0.0,14.0.0)"}}}}}}`, "pkg:nuget/Newtonsoft.Json@13.0.1", false},
+		{"nuget-invalid-assets", "NuGet", "project.assets.json", `{"version":3,"targets":{}}`, "", true},
+		{"pnpm-no-hit", "npm", "pnpm-lock.yaml", "lockfileVersion: '6.0'\ndependencies: {lodash: {version: 4.17.20}}\npackages:\n  /lodash@4.17.20: {}\n", "pkg:npm/lodash@4.17.20", false},
+		{"nuget-no-hit", "NuGet", "packages.config", `<packages><package id="Newtonsoft.Json" version="13.0.2" /></packages>`, "pkg:nuget/Newtonsoft.Json@13.0.2", false},
+		{"pnpm-missing-package", "npm", "pnpm-lock.yaml", "lockfileVersion: '6.0'\ndependencies: {lodash: {version: 4.17.21}}\n", "", true},
+		{"nuget-invalid-version", "NuGet", "packages.config", `<packages><package id="Newtonsoft.Json" version="13.*" /></packages>`, "", true},
 	}
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -257,10 +270,10 @@ func TestOSVCompatibility(t *testing.T) {
 				args = append(args, "-maven-repo", filepath.Join(dir, "gradle-m2"))
 			}
 			out, runErr := exec.CommandContext(ctx, binary, args...).CombinedOutput()
-			if scenario.unsupported {
+			if scenario.incomplete {
 				exitErr, ok := runErr.(*exec.ExitError)
 				if !ok || exitErr.ExitCode() != 3 {
-					t.Fatalf("unsupported manifest should return diagnostic exit code 3 (err=%v): %s", runErr, out)
+					t.Fatalf("invalid manifest should return diagnostic exit code 3 (err=%v): %s", runErr, out)
 				}
 			} else if runErr != nil {
 				t.Fatalf("OpenSCA: %v\n%s", runErr, out)
@@ -285,16 +298,16 @@ func TestOSVCompatibility(t *testing.T) {
 			if err := json.Unmarshal(data, &exported); err != nil {
 				t.Fatal(err)
 			}
-			if scenario.unsupported {
+			if scenario.incomplete {
 				if len(exported.Components) != 0 {
-					t.Fatalf("unsupported manifest unexpectedly resolved components: %s", data)
+					t.Fatalf("invalid manifest unexpectedly resolved components: %s", data)
 				}
 				foundDiagnostic := false
 				for _, property := range exported.Properties {
 					foundDiagnostic = foundDiagnostic || property.Name == "opensca:diagnostic" && strings.Contains(property.Value, filepath.Base(scenario.relpath)) && strings.Contains(property.Value, "dependency data may be incomplete")
 				}
 				if !foundDiagnostic {
-					t.Fatalf("unsupported manifest was not diagnosed: %s", data)
+					t.Fatalf("invalid manifest was not diagnosed: %s", data)
 				}
 				return
 			}
@@ -323,10 +336,20 @@ func TestOSVCompatibility(t *testing.T) {
 			cmd := exec.CommandContext(ctx, scanner, "scan", "source", "--offline", "--all-packages", "--config", scannerConfig, "--lockfile", bom, "--format", "json", "--output-file", outPath)
 			cmd.Env = append(os.Environ(), "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY="+db)
 			log, err := cmd.CombinedOutput()
+			wantExit, actualExit := 1, 0
+			noHit := strings.HasSuffix(scenario.name, "-no-hit")
+			if noHit {
+				wantExit = 0
+			}
 			if err != nil {
-				if e, ok := err.(*exec.ExitError); !ok || e.ExitCode() != 1 {
-					t.Fatalf("OSV did not detect the fixture advisory for %s: %v\n%s", scenario.name, err, log)
+				if e, ok := err.(*exec.ExitError); ok {
+					actualExit = e.ExitCode()
+				} else {
+					t.Fatalf("OSV failed for %s: %v\n%s", scenario.name, err, log)
 				}
+			}
+			if actualExit != wantExit {
+				t.Fatalf("OSV exit %d, want %d for %s: %s", actualExit, wantExit, scenario.name, log)
 			}
 			result, err := os.ReadFile(outPath)
 			if err != nil {
@@ -335,11 +358,114 @@ func TestOSVCompatibility(t *testing.T) {
 			if !strings.Contains(string(result), scenario.wantPURL) {
 				t.Fatalf("OSV result omits %s: %s", scenario.wantPURL, result)
 			}
-			if !strings.Contains(string(result), issues[scenario.name].id) {
+			if noHit && strings.Contains(string(result), "OSV-TEST-") {
+				t.Fatalf("OSV incorrectly matched an unaffected package: %s", result)
+			}
+			if !noHit && !strings.Contains(string(result), issues[scenario.name].id) {
 				t.Fatalf("OSV did not match %s to its advisory: %s", scenario.name, result)
 			}
 		})
 	}
+	t.Run("pnpm-workspace-transitive-multiversion", func(t *testing.T) {
+		project := filepath.Join(dir, "pnpm-workspace")
+		write(filepath.Join(project, "package.json"), `{"name":"mono","version":"1.0.0"}`)
+		write(filepath.Join(project, "packages", "app", "package.json"), `{"name":"@local/app","version":"1.0.0","dependencies":{"wrapper":"^1","lodash":"4.17.20"},"devDependencies":{"dev-tool":"^1"}}`)
+		write(filepath.Join(project, "pnpm-lock.yaml"), `lockfileVersion: '9.0'
+importers:
+  .:
+    dependencies:
+      '@local/app': {specifier: 'workspace:*', version: 'link:packages/app'}
+  packages/app:
+    dependencies:
+      wrapper: {specifier: ^1, version: 1.0.0}
+      lodash: {specifier: 4.17.20, version: 4.17.20}
+    devDependencies:
+      dev-tool: {specifier: ^1, version: 1.0.0}
+packages:
+  wrapper@1.0.0: {}
+  dev-tool@1.0.0: {}
+  lodash@4.17.20: {}
+  lodash@4.17.21: {}
+snapshots:
+  wrapper@1.0.0:
+    dependencies: {lodash: 4.17.21}
+  dev-tool@1.0.0:
+    dependencies: {lodash: 4.17.21}
+  lodash@4.17.20: {}
+  lodash@4.17.21: {}
+`)
+		bom := filepath.Join(project, "bom.cdx.json")
+		args := []string{"-config", configPath, "-path", project, "-offline", "-dependencies-only", "-cache-dir", filepath.Join(dir, "cache"), "-log", filepath.Join(dir, "opensca.log"), "-out", bom}
+		if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
+			t.Fatalf("OpenSCA workspace: %v\n%s", err, out)
+		}
+		data, err := os.ReadFile(bom)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var exported struct {
+			Components []struct {
+				Name, Type string
+				Ref        string `json:"bom-ref"`
+				PURL       string `json:"purl"`
+			} `json:"components"`
+			Dependencies []struct {
+				Ref       string
+				DependsOn []string
+			} `json:"dependencies"`
+		}
+		if err := json.Unmarshal(data, &exported); err != nil {
+			t.Fatal(err)
+		}
+		found, edges := map[string]bool{}, map[string]bool{}
+		appRef := ""
+		for _, c := range exported.Components {
+			if c.PURL != "" {
+				found[c.PURL] = true
+			}
+			if c.Name == "app" && c.Type == "application" {
+				appRef = c.Ref
+				if c.PURL != "" {
+					t.Fatalf("local workspace received a registry PURL: %s", data)
+				}
+			}
+		}
+		for _, d := range exported.Dependencies {
+			for _, child := range d.DependsOn {
+				edges[d.Ref+"->"+child] = true
+			}
+		}
+		for _, want := range []string{"pkg:npm/wrapper@1.0.0", "pkg:npm/dev-tool@1.0.0", "pkg:npm/lodash@4.17.20", "pkg:npm/lodash@4.17.21"} {
+			if !found[want] {
+				t.Fatalf("missing package %s: %s", want, data)
+			}
+		}
+		for _, want := range []string{appRef + "->pkg:npm/wrapper@1.0.0", "pkg:npm/wrapper@1.0.0->pkg:npm/lodash@4.17.21", "pkg:npm/dev-tool@1.0.0->pkg:npm/lodash@4.17.21"} {
+			if appRef == "" || !edges[want] {
+				t.Fatalf("missing workspace/transitive edge %s: %s", want, data)
+			}
+		}
+		if scanner == "" {
+			return
+		}
+		outPath := filepath.Join(project, "osv.json")
+		cmd := exec.CommandContext(ctx, scanner, "scan", "source", "--offline", "--all-packages", "--config", scannerConfig, "--lockfile", bom, "--format", "json", "--output-file", outPath)
+		cmd.Env = append(os.Environ(), "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY="+db)
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("OSV missed the transitive fixture advisory: %s", out)
+		} else if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+			t.Fatalf("OSV workspace failed: %v: %s", err, out)
+		}
+		result, err := os.ReadFile(outPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"pkg:npm/lodash@4.17.20", "pkg:npm/lodash@4.17.21", "OSV-TEST-1012"} {
+			if !strings.Contains(string(result), want) {
+				t.Fatalf("OSV workspace output lost %s: %s", want, result)
+			}
+		}
+	})
 	if scanner == "" {
 		t.Run("cargo-duplicate-versions", func(t *testing.T) {
 			t.Skip("set OSV_SCANNER to run external scanner compatibility checks")

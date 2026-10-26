@@ -63,8 +63,8 @@ type OptionalConfig struct {
 }
 
 // DynamicMode controls parsers that invoke external build tools. Auto enables
-// Maven resolution when Maven is installed; other dynamic parsers stay opt-in.
-// The zero value behaves like auto for Maven.
+// Maven and NuGet resolution when their tools are installed; other dynamic
+// parsers stay opt-in. The zero value behaves like auto for Maven and NuGet.
 type DynamicMode string
 
 const (

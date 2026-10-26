@@ -57,6 +57,8 @@
 | `Java`       | `Maven`    | `pom.xml`                                                                |
 | `Java`       | `Gradle`   | `.gradle` `.gradle.kts`                                                  |
 | `JavaScript` | `Npm`      | `package-lock.json` `package.json` `yarn.lock`                           |
+| `JavaScript` | `pnpm`     | `pnpm-lock.yaml`（锁格式 v5、v6、v9，支持 workspace）                       |
+| `.NET`       | `NuGet`    | `packages.config`、`project.assets.json`、`.csproj` / `.fsproj` / `.vbproj` / `.sln`（自动 restore） |
 | `PHP`        | `Composer` | `composer.json` `composer.lock`                                          |
 | `Ruby`       | `gem`      | `gemfile.lock`                                                           |
 | `Golang`     | `gomod`    | `go.mod` `go.sum` `Gopkg.toml` `Gopkg.lock`                              |

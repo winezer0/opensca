@@ -9,6 +9,7 @@ import (
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/groovy"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/java"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/javascript"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/nuget"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/php"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/python"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/ruby"
@@ -25,6 +26,7 @@ type Sca interface {
 var AllSca = []Sca{
 	python.Sca{},
 	javascript.Sca{},
+	nuget.Sca{},
 	golang.Sca{},
 	ruby.Sca{},
 	rust.Sca{},

@@ -22,6 +22,8 @@ OpenSCA 是 SCA 技术原理的开源实现。作为[悬镜安全](https://www.x
 | Java | Maven | `pom.xml` |
 | | Gradle | `.gradle`, `.gradle.kts` |
 | JavaScripts | NPM | `package-lock.json`, `package.json`, `yarn.lock` |
+| JavaScript | pnpm | `pnpm-lock.yaml`（锁格式 v5、v6、v9，支持 workspace） |
+| .NET | NuGet | `packages.config`、`project.assets.json`、`.csproj` / `.fsproj` / `.vbproj` / `.sln`（自动 restore） |
 | PHP | Composer | `composer.json`, `composer.lock` |
 | Ruby | gem | `gemfile.lock` |
 | Golang | Go mod | `go.mod`, `go.sum` |

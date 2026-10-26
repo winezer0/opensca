@@ -16,6 +16,8 @@ Based on OpenSCA, we've built up a global community covering industries of telec
 | Java | Maven | `pom.xml` |
 | | Gradle | `.gradle`, `.gradle.kts` |
 | JavaScripts | NPM | `package-lock.json`, `package.json`, `yarn.lock` |
+| JavaScript | pnpm | `pnpm-lock.yaml` (lockfile v5, v6, v9; workspaces supported) |
+| .NET | NuGet | `packages.config`, `project.assets.json`, `.csproj` / `.fsproj` / `.vbproj` / `.sln` (automatic restore) |
 | PHP | Composer | `composer.json`, `composer.lock` |
 | Ruby | gem | `gemfile.lock` |
 | Golang | Go mod | `go.mod`, `go.sum` |

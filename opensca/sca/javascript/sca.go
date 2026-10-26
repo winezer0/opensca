@@ -21,7 +21,7 @@ func (sca Sca) Language() model.Language {
 func (sca Sca) Filter(relpath string) bool {
 	return filter.JavaScriptPackageJson(relpath) ||
 		filter.JavaScriptPackageLock(relpath) ||
-		filter.JavaScriptYarnLock(relpath)
+		filter.JavaScriptYarnLock(relpath) || isPnpmLock(relpath)
 }
 
 func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File, call model.ResCallback) {
@@ -36,11 +36,16 @@ func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File,
 	nodeMap := map[string]*PackageJson{}
 	// map[dirpath]
 	yarnMap := map[string]map[string]*YarnLock{}
+	pnpmFiles := map[string]*model.File{}
 
 	// 将npm相关文件按上述方案分类
 	for _, f := range files {
 
 		dir := filepath.Dir(strings.ReplaceAll(f.Relpath(), `\`, `/`))
+		dir = strings.ReplaceAll(dir, `\`, `/`)
+		if isPnpmLock(f.Relpath()) {
+			pnpmFiles[dir] = f
+		}
 
 		if filter.JavaScriptYarnLock(f.Relpath()) {
 			yarnMap[dir] = ParseYarnLock(f)
@@ -88,9 +93,10 @@ func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File,
 		}
 	}
 
+	pnpmClaimed := scanPnpm(ctx, pnpmFiles, jsonMap, call)
 	// 遍历非node_modules下的package.json
 	for dir, js := range jsonMap {
-		if invalidLocks[dir] {
+		if invalidLocks[dir] || pnpmClaimed[dir] {
 			continue
 		}
 
@@ -120,6 +126,9 @@ func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File,
 
 	// A package-lock.json is sufficient input when its package.json is absent.
 	for dir, lock := range lockMap {
+		if pnpmClaimed[dir] || pnpmFiles[dir] != nil {
+			continue
+		}
 		if _, hasPackageJson := jsonMap[dir]; hasPackageJson || lock.File == nil {
 			continue
 		}
