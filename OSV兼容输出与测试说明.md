@@ -17,7 +17,7 @@ osv-scanner scan source --lockfile C:\reports\bom.cdx.json
 | 项目 | 行为 |
 |---|---|
 | CycloneDX 图 | 统一稳定 bom-ref，组件和边去重，保留根依赖与匿名容器下的依赖；组件排序稳定 |
-| PURL | 使用 packageurl 库构造和解析；不把未知生态猜成 Maven，不把版本范围当成确定版本 |
+| PURL | 使用 packageurl 库构造和解析；不把未知生态猜成 Maven，不把版本范围当成确定版本。CycloneDX 中无法生成有效 PURL 的依赖会附带 `opensca:diagnostic`，提示 OSV 匹配可能不完整 |
 | SBOM 输入 | 目录扫描默认排除 SBOM；单文件或 `-input-type sbom` 显式导入；按格式识别，避免一个 JSON 被多个 SBOM parser 重复读取 |
 | Maven 仓库 | `-maven-repo` / `java.local_repository` > `MAVEN_REPO_LOCAL` > 用户 settings.xml > `~/.m2/repository`；设置文件可通过 `-maven-settings` 指定 |
 | 父 POM | 支持默认 `../pom.xml`、目录路径、显式空 relativePath 和属性版本；校验 group/artifact 及确定版本 |
@@ -25,7 +25,7 @@ osv-scanner scan source --lockfile C:\reports\bom.cdx.json
 | 工程模块 | Maven 工程节点显式标记；默认保留 application 节点与关系，工程子模块不带 PURL；`-include-project` 可包含。metadata 根节点保留项目身份 |
 | 缓存 | `-cache-dir` / `cache_dir` > `OPENSCA_CACHE_DIR` > 系统用户缓存目录，不再写到安装目录 |
 | 纯依赖输出 | `-dependencies-only` 跳过漏洞查询和 SaaS 报告上传，不需要 token |
-| 离线与诊断 | `-offline` 禁止共享 HTTP client 联网并关闭动态构建；元数据缺失、未解析坐标等记录到诊断中。JSON 使用 `task_info.diagnostics`，CycloneDX 使用 `opensca:diagnostic` 属性 |
+| 离线与诊断 | `-offline` 禁止共享 HTTP client 联网并关闭动态构建；元数据缺失、未解析坐标及不支持的 `pnpm-lock.yaml` / `packages.config` 等记录到诊断中。JSON 使用 `task_info.diagnostics`，CycloneDX 使用 `opensca:diagnostic` 属性 |
 | 退出码 | 0：解析完成；2：任务或 CycloneDX 写入失败；3：存在解析诊断。退出码不代表漏洞扫描结果 |
 
 静态解析不替代 Maven 的完整 effective model。精确 OS 名称/版本等尚未支持的激活条件会报告诊断，可显式选择 profile。没有锁文件或解析器时，不会凭空补出传递依赖或确定版本。
@@ -49,8 +49,11 @@ go test ./... -count=1 -timeout 120s
 go test -race ./... -count=1 -timeout 120s
 go vet ./...
 
-# 可选外部消费者兼容性测试（生产代码没有 scanner 依赖）
-$env:OPENSCA_TEST_OSV_SCANNER = 'C:\tools\osv-scanner.exe'
+# 默认运行：解析、PURL 和不支持清单的诊断断言，不需要安装 osv-scanner
+go test . -run TestOSVCompatibility -count=1 -v -timeout 100s
+
+# 设置后还会运行外部消费者和固定 OSV 数据库命中/未命中检查
+$env:OSV_SCANNER = 'C:\tools\osv-scanner.exe'
 go test . -run TestOSVCompatibility -count=1 -v -timeout 100s
 
 # 可选：本机需安装 Maven，并允许访问 fixture 所需仓库
@@ -58,25 +61,31 @@ $env:OPENSCA_TEST_LIVE_MAVEN = '1'
 go test ./test/java -run Test_JavaWithMvn -count=1 -v -timeout 300s
 ```
 
-兼容性测试用临时项目、本地 Maven POM 和最小 OSV 离线测试库，验证 OpenSCA 连续两次导出、外部 scanner 直接消费、Log4j 2.14.1 命中及 2.17.1 不命中。固定测试库只用于格式和流程验收，不能作为真实漏洞覆盖率证明。
+兼容性测试即使未设置 `OSV_SCANNER`，也会构建 OpenSCA 并验证依赖解析与 PURL；设置变量后再调用真实 scanner，验证 SBOM 消费和固定 OSV 数据命中。固定测试库只用于格式和流程验收，不能作为真实漏洞覆盖率证明。
 
 ## 本机验证记录（2026-10-26）
 
 ### OpenSCA → CycloneDX → osv-scanner 场景矩阵
 
-`osv_compatibility_test.go` 会构建 OpenSCA CLI、扫描临时项目、检查输出 PURL，再调用本机 osv-scanner 2.7.0 离线扫描同一份 CycloneDX。每个生态的 OSV 记录是临时生成的精确版本测试公告，不依赖公开漏洞库，也不代表真实库的覆盖程度。共 10 个子场景，检查受影响/修复版本、传递依赖、scoped PURL、工程根排除、同名多版本以及最终 OSV 命中。
+`osv_compatibility_test.go` 会构建 OpenSCA CLI、扫描临时项目并检查输出 PURL；设置 `OSV_SCANNER` 后会把 CycloneDX 交给外部 scanner 离线扫描。测试公告来自临时生成的本地 OSV 数据库，不依赖公开漏洞库，也不代表真实库的覆盖程度。
 
 | 开发场景 | 输入 | 输出/OSV 验证 | 结果 |
 |---|---|---|---|
 | Maven 直接依赖 | POM + 本地 Maven 仓库 | log4j-core 2.14.1 命中，2.17.1 不命中 | 通过 |
 | Maven 传递依赖 | app → wrapper → log4j-core | 两层组件与依赖边保留，OSV 命中传递组件 | 通过 |
 | npm scoped 依赖 | package.json + lock v3 | `pkg:npm/%40acme/demo@1.2.3` 命中 | 通过 |
+| npm workspace | 根 lockfile + `packages/app` 清单 | workspace 的 lodash PURL 与依赖边保留并命中 | 通过 |
+| Yarn v1 | package.json + yarn.lock | lodash PURL 保留并命中 | 通过 |
+| Gradle Groovy | build.gradle + 本地 Maven POM | Guava Maven PURL 保留并命中 | 通过 |
 | Go module | go.mod | Go PURL 和 OSV 漏洞关联 | 通过 |
 | Python 固定版本 | requirements.txt | PyPI PURL 和 OSV 漏洞关联 | 通过 |
 | Composer | composer.json + composer.lock | Packagist PURL 和 OSV 漏洞关联 | 通过 |
 | RubyGems | Gemfile.lock | gem PURL 和 OSV 漏洞关联 | 通过 |
 | Cargo | Cargo.lock | crates.io PURL 和 OSV 漏洞关联 | 通过 |
 | Cargo 多版本 | 同一个 lockfile 含 serde 1.0.188/1.0.200 | 两个独立 PURL 均输出，仅公告影响版本命中 | 通过 |
+| pnpm v6 | pnpm-lock.yaml | 当前不解析；SBOM 属性明确提示依赖数据可能不完整 | 通过（诊断断言） |
+| NuGet packages.config | packages.config | 当前不解析；SBOM 属性明确提示依赖数据可能不完整 | 通过（诊断断言） |
+| 无有效 PURL 的依赖 | 未映射语言的组件 | `opensca:diagnostic` 指明包身份且提示 OSV 匹配可能不完整 | 通过（格式单测） |
 
 ### 本轮联测发现并修复
 
@@ -84,7 +93,8 @@ go test ./test/java -run Test_JavaWithMvn -count=1 -v -timeout 300s
 - Cargo 解析曾用 crate 名作为唯一 key，同名多版本会互相覆盖；依赖引用携带 registry source 时也会污染版本字符串。现改用 name + version 区分组件，并从依赖引用提取具体版本。两个版本的外部扫描回归通过。
 - 不同生态的组件身份都由 PURL 供 scanner 匹配。测试确认 `%40` scoped npm 名称和 Maven group/artifact 结构可命中对应公告。
 
-- 以上均为直接依赖的独立生态测试；已另测 Maven 传递依赖。没有验证各生态所有 lockfile 版本、workspace、平台条件或私有 registry 行为。
+- 外部 scanner 未设置时，依赖解析/PURL 场景仍执行；仅 scanner 命中断言跳过。pnpm 和 NuGet 用例当前验证明确诊断，不表示已经支持这两种解析器。
+- 以上均为直接依赖的独立生态测试；已另测 Maven 传递依赖。没有验证各生态所有 lockfile 版本、平台条件或私有 registry 行为。
 
 - 全量默认测试（`go test ./... -count=1`）：通过，同时显式启用并通过外部 OSV 兼容性测试。
 - 全量竞态检查（`go test -race ./... -count=1`）：通过。
