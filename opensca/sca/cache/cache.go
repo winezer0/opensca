@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,8 +18,17 @@ var (
 )
 
 func initCache() {
-	excpath, _ := os.Executable()
-	cacheDir = filepath.Join(filepath.Dir(excpath), cacheDir)
+	cacheDir = config.Conf().CacheDir
+	if cacheDir == "" {
+		cacheDir = os.Getenv("OPENSCA_CACHE_DIR")
+	}
+	if cacheDir == "" {
+		if userCache, err := os.UserCacheDir(); err == nil {
+			cacheDir = filepath.Join(userCache, "opensca")
+		} else {
+			cacheDir = filepath.Join(os.TempDir(), "opensca-cache")
+		}
+	}
 	if err := os.MkdirAll(cacheDir, 0777); err != nil {
 		logs.Error(err)
 	}

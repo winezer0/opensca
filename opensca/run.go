@@ -2,19 +2,25 @@ package opensca
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/filter"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/sbom"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/walk"
 )
 
 // 任务检测参数
 type TaskArg struct {
+	// auto: project directories exclude SBOMs; explicit SBOM files are accepted.
+	InputType string
 
 	// 检测数据源 文件路径或url 兼容http(s)|ftp|file
 	DataOrigin string
@@ -34,6 +40,7 @@ type TaskArg struct {
 }
 
 type TaskResult struct {
+	Diagnostics []string
 	// 任务参数
 	Arg *TaskArg
 	// 检出组件
@@ -51,9 +58,15 @@ type TaskResult struct {
 // RunTask 运行检测任务
 // arg: 任务参数
 func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
+	ctx, diagnostics := model.WithDiagnostics(ctx)
+	var resultMu sync.Mutex
 
 	result.Start = time.Now()
 	defer func() {
+		result.Diagnostics = diagnostics.List()
+		if ctx.Err() != nil {
+			result.Error = ctx.Err()
+		}
 		result.End = time.Now()
 		result.Arg = arg
 	}()
@@ -79,7 +92,27 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 	}
 
 	if len(arg.Sca) == 0 {
-		arg.Sca = sca.AllSca
+		input := arg.InputType
+		if input == "" {
+			input = "auto"
+		}
+		if input != "auto" && input != "project" && input != "sbom" {
+			result.Error = fmt.Errorf("invalid input type %q", input)
+			return
+		}
+		allowSBOM := input == "sbom"
+		if input == "auto" {
+			if fi, err := os.Stat(arg.DataOrigin); err == nil && !fi.IsDir() {
+				allowSBOM = true
+			}
+		}
+		for _, parser := range sca.AllSca {
+			_, isSBOM := parser.(sbom.Sca)
+			if (input == "sbom" && !isSBOM) || (isSBOM && !allowSBOM) {
+				continue
+			}
+			arg.Sca = append(arg.Sca, parser)
+		}
 	}
 
 	result.Size, result.Error = walk.Walk(ctx, arg.Name, arg.DataOrigin, func(relpath string) bool {
@@ -116,6 +149,7 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 
 			defer func() {
 				if err := recover(); err != nil {
+					model.AddDiagnostic(ctx, fmt.Sprintf("parser panic: %s: %v", scaType, err))
 					logs.Errorf("sca:%s file:%s err:%v", scaType, parent, err)
 				}
 			}()
@@ -129,7 +163,9 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 					dep.ForEachNode(func(p, n *model.DepGraph) bool { count++; return true })
 					logs.Infof("file:%s deps:%d language:%s", file.Relpath(), count, sca.Language())
 					dep.Build(false, sca.Language())
+					resultMu.Lock()
 					result.Deps = append(result.Deps, dep)
+					resultMu.Unlock()
 					if arg.ResCallFunc != nil {
 						arg.ResCallFunc(file, dep)
 					}

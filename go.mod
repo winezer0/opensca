@@ -11,6 +11,7 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2
 	github.com/google/uuid v1.5.0
 	github.com/nwaples/rardecode v1.1.3
+	github.com/package-url/packageurl-go v0.1.7
 	github.com/pkg/errors v0.9.1
 	github.com/rivo/tview v0.0.0-20231126152417-33a1d271f2b6
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06

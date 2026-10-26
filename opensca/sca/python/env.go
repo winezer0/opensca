@@ -19,6 +19,9 @@ import (
 
 // ParsePythonWithEnv 借助pipenv解析python依赖
 func ParsePythonWithEnv(ctx context.Context, file *model.File) *model.DepGraph {
+	if config.Conf().Offline || !config.Conf().Optional.Dynamic {
+		return nil
+	}
 
 	if _, err := exec.LookPath("python"); err != nil {
 		return nil

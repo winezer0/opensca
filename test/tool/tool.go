@@ -2,6 +2,8 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca"
@@ -11,14 +13,70 @@ import (
 )
 
 func Diff(a, b *model.DepGraph) bool {
-	clear := func(p, n *model.DepGraph) bool {
-		n.Path = ""
-		n.Language = model.Lan_None
-		return true
+	// Compare complete node/edge sets. A tree rendering omits shared edges and
+	// depends on traversal order; anonymous parser containers carry no identity.
+	signature := func(root *model.DepGraph) string {
+		set := map[string]bool{}
+		key := func(n *model.DepGraph) string {
+			if n.Name == "" {
+				return "ROOT"
+			}
+			b, _ := json.Marshal([]any{n.Vendor, n.Name, n.Version, n.Develop})
+			return string(b)
+		}
+		root.ForEachNode(func(_, n *model.DepGraph) bool {
+			if n.Name != "" {
+				set["node:"+key(n)] = true
+			}
+			pending := append([]*model.DepGraph(nil), n.Children...)
+			seen := map[*model.DepGraph]bool{}
+			for len(pending) > 0 {
+				c := pending[0]
+				pending = pending[1:]
+				if seen[c] {
+					continue
+				}
+				seen[c] = true
+				if c.Name == "" {
+					pending = append(pending, c.Children...)
+				} else {
+					set["edge:"+key(n)+"->"+key(c)] = true
+				}
+			}
+			return true
+		})
+		lines := []string{}
+		for s := range set {
+			lines = append(lines, s)
+		}
+		sort.Strings(lines)
+		b, _ := json.Marshal(lines)
+		return string(b)
 	}
-	a.ForEachNode(clear)
-	b.ForEachNode(clear)
-	return a.Tree(false, true) != b.Tree(false, true)
+	actual, expected := signature(a), signature(b)
+	if actual != expected {
+		var aa, bb []string
+		_ = json.Unmarshal([]byte(actual), &aa)
+		_ = json.Unmarshal([]byte(expected), &bb)
+		am, bm := map[string]bool{}, map[string]bool{}
+		for _, s := range aa {
+			am[s] = true
+		}
+		for _, s := range bb {
+			bm[s] = true
+		}
+		for _, s := range aa {
+			if !bm[s] {
+				logs.Debug("unexpected: ", s)
+			}
+		}
+		for _, s := range bb {
+			if !am[s] {
+				logs.Debug("missing: ", s)
+			}
+		}
+	}
+	return actual != expected
 }
 
 func Dep3(vendor, name, version string, children ...*model.DepGraph) *model.DepGraph {
@@ -55,18 +113,23 @@ type TaskCase struct {
 func RunTaskCase(t *testing.T, sca ...sca.Sca) func(cases []TaskCase) {
 	return func(cases []TaskCase) {
 		for _, c := range cases {
-			r := opensca.RunTask(context.Background(), &opensca.TaskArg{
-				DataOrigin: c.Path,
-				Sca:        sca,
+			t.Run(c.Path, func(t *testing.T) {
+				r := opensca.RunTask(context.Background(), &opensca.TaskArg{
+					DataOrigin: c.Path,
+					Sca:        sca,
+				})
+				if r.Error != nil {
+					t.Fatal(r.Error)
+				}
+				result := &model.DepGraph{}
+				for _, dep := range r.Deps {
+					result.AppendChild(dep)
+				}
+				if Diff(result, c.Result) {
+					logs.Debugf("%s\nres:\n%sstd:\n%s", c.Path, result.Tree(false, true), c.Result.Tree(false, true))
+					t.Error("dependency graph differs from fixture")
+				}
 			})
-			result := &model.DepGraph{}
-			for _, dep := range r.Deps {
-				result.AppendChild(dep)
-			}
-			if Diff(result, c.Result) {
-				logs.Debugf("%s\nres:\n%sstd:\n%s", c.Path, result.Tree(false, true), c.Result.Tree(false, true))
-				t.Fail()
-			}
 		}
 	}
 }

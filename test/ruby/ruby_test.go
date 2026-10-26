@@ -8,6 +8,7 @@ import (
 )
 
 func Test_Ruby(t *testing.T) {
+	eventmachine := tool.Dep("eventmachine", "1.2.7")
 	tool.RunTaskCase(t, ruby.Sca{})([]tool.TaskCase{
 
 		// Gemfile.lock
@@ -17,8 +18,8 @@ func Test_Ruby(t *testing.T) {
 					tool.Dep("public_suffix", "5.0.3"),
 				),
 				tool.Dep("cookiejar", "0.3.3"),
-				tool.Dep("em-socksify", "0.3.2"),
-				tool.Dep("eventmachine", "1.2.7"),
+				tool.Dep("em-socksify", "0.3.2", eventmachine),
+				eventmachine,
 				tool.Dep("http_parser.rb", "0.8.0"),
 			),
 		)},

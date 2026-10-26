@@ -13,22 +13,12 @@ func Test_Python(t *testing.T) {
 
 		// rquirements.txt
 		{Path: "1", Result: tool.Dep("", "", tool.Dep("", "",
-			tool.Dep("elasticsearch", "8.9.0",
-				tool.Dep("elastic-transport", "8.4.0",
-					tool.Dep("certifi", "2023.7.22"),
-					tool.Dep("urllib3", "1.26.16"),
-				),
-			),
+			tool.Dep("elasticsearch", ""),
 		))},
 
 		// Pipfile
 		{Path: "2", Result: tool.Dep("", "", tool.Dep("", "",
-			tool.Dep("elasticsearch", "8.9.0",
-				tool.Dep("elastic-transport", "8.4.0",
-					tool.Dep("certifi", "2023.7.22"),
-					tool.Dep("urllib3", "1.26.16"),
-				),
-			),
+			tool.Dep("elasticsearch", ""),
 		))},
 
 		// Pipfile.lock

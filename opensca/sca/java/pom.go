@@ -1,6 +1,7 @@
 package java
 
 import (
+	stdxml "encoding/xml"
 	"fmt"
 	"io"
 	"regexp"
@@ -23,6 +24,9 @@ type Pom struct {
 	Mirrors              []string         `xml:"mirrors>mirror>url"`
 	Licenses             []string         `xml:"licenses>license>name"`
 	Profiles             []Pom            `xml:"profiles>profile"`
+	ID                   string           `xml:"id"`
+	Activation           Activation       `xml:"activation"`
+	Issues               []string         `xml:"-"`
 	// 当前pom对应的文件信息
 	File *model.File `xml:"-" json:"-"`
 }
@@ -130,6 +134,10 @@ func (pd PomDependency) Index4() string {
 
 // ReadPom 读取pom信息
 func ReadPom(reader io.Reader) *Pom {
+	return ReadPomAt(reader, "")
+}
+
+func ReadPomAt(reader io.Reader, filename string) *Pom {
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
@@ -139,7 +147,21 @@ func ReadPom(reader io.Reader) *Pom {
 
 	data = regexp.MustCompile(`xml version="1.0" encoding="\S+"`).ReplaceAll(data, []byte(`xml version="1.0" encoding="UTF-8"`))
 	p := &Pom{Properties: PomProperties{}}
-	xml.Unmarshal(data, &p)
+	if err := xml.Unmarshal(data, &p); err != nil || p.ArtifactId == "" {
+		return nil
+	}
+	if filename != "" {
+		p.File = model.NewFile(filename, filename)
+	}
+	var presence struct {
+		Parent *struct {
+			RelativePath *string `xml:"relativePath"`
+		} `xml:"parent"`
+	}
+	if stdxml.Unmarshal(data, &presence) == nil && presence.Parent != nil && presence.Parent.RelativePath == nil {
+		p.Parent.RelativePath = "../pom.xml"
+	}
+	p.applyProfiles()
 
 	trimSpace(&p.Parent)
 	trimSpace(&p.PomDependency)
@@ -174,21 +196,6 @@ func ReadPom(reader io.Reader) *Pom {
 	p.Properties["pom.version"] = &Property{Key: "pom.version", Value: p.Version}
 	p.Properties["project.parent.version"] = &Property{Key: "project.parent.version", Value: p.Parent.Version}
 	p.Properties["parent.version"] = &Property{Key: "parent.version", Value: p.Parent.Version}
-
-	// 添加第一个Profile
-	if len(p.Profiles) > 0 {
-		profile := p.Profiles[0]
-		for k, v := range profile.Properties {
-			if _, ok := p.Properties[k]; !ok {
-				p.Properties[k] = v
-			}
-		}
-		p.Dependencies = append(p.Dependencies, profile.Dependencies...)
-		p.DependencyManagement = append(p.DependencyManagement, profile.DependencyManagement...)
-		p.Modules = append(p.Modules, profile.Modules...)
-		p.Mirrors = append(p.Mirrors, profile.Mirrors...)
-		p.Repositories = append(p.Repositories, profile.Repositories...)
-	}
 
 	// 处理版本范围
 	for _, d := range p.Dependencies {

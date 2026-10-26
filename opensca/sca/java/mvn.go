@@ -53,11 +53,16 @@ func ParsePoms(ctx context.Context, poms []*Pom, exclusion []*Pom, call func(pom
 		var p *Pom
 		if ok {
 			f.OpenReader(func(reader io.Reader) {
-				p = ReadPom(reader)
-				p.File = f
+				p = ReadPomAt(reader, f.Abspath())
+				if p != nil {
+					p.File = f
+				}
 			})
 		}
-		if p != nil {
+		if p != nil && matchesParent(p, dep) {
+			return p
+		}
+		if p = relativeParent(dep); p != nil {
 			return p
 		}
 		// 从组件仓库下载pom
@@ -71,6 +76,7 @@ func ParsePoms(ctx context.Context, poms []*Pom, exclusion []*Pom, call func(pom
 
 		if p == nil {
 			logs.Warnf("not found pom %s", dep.Index3())
+			model.AddDiagnostic(ctx, fmt.Sprintf("missing Maven metadata: %s", dep.GAV()))
 		}
 
 		return p
@@ -92,7 +98,14 @@ func ParsePoms(ctx context.Context, poms []*Pom, exclusion []*Pom, call func(pom
 		wg.Add(1)
 		go func(pom *Pom) {
 			defer wg.Done()
-			call(pom, parsePom(ctx, pom, getpom))
+			root := parsePom(ctx, pom, getpom)
+			root.ForEachNode(func(_, n *model.DepGraph) bool {
+				if _, ok := gavMap[n.Vendor+":"+n.Name+":"+n.Version]; ok {
+					n.Project = true
+				}
+				return true
+			})
+			call(pom, root)
 		}(pom)
 	}
 	wg.Wait()
@@ -185,6 +198,16 @@ type getPomFunc func(dep PomDependency, repos ...[]string) *Pom
 
 // inheritPom 继承pom所需内容
 func inheritPom(pom *Pom, getpom getPomFunc) {
+	inheritPomSeen(pom, getpom, map[string]bool{})
+}
+
+func inheritPomSeen(pom *Pom, getpom getPomFunc, imports map[string]bool) {
+	if imports[pom.GAV()] {
+		pom.Issues = append(pom.Issues, "cyclic POM import: "+pom.GAV())
+		return
+	}
+	imports[pom.GAV()] = true
+	defer delete(imports, pom.GAV())
 
 	// 记录统计过的parent 避免pom循环引用
 	parentSet := map[string]bool{}
@@ -196,6 +219,7 @@ func inheritPom(pom *Pom, getpom getPomFunc) {
 		pom.Update(&parent)
 
 		if parentSet[parent.Index3()] {
+			pom.Issues = append(pom.Issues, "cyclic POM parent: "+parent.GAV())
 			break
 		} else {
 			parentSet[parent.Index3()] = true
@@ -206,6 +230,7 @@ func inheritPom(pom *Pom, getpom getPomFunc) {
 			break
 		}
 		parentPom.PomDependency = parent
+		pom.Issues = append(pom.Issues, parentPom.Issues...)
 		parent = parentPom.Parent
 
 		// 继承properties
@@ -271,7 +296,8 @@ func inheritPom(pom *Pom, getpom getPomFunc) {
 		ipom.PomDependency = *dep
 
 		// import引入的pom需要继承parent
-		inheritPom(ipom, getpom)
+		inheritPomSeen(ipom, getpom, imports)
+		pom.Issues = append(pom.Issues, ipom.Issues...)
 
 		// 复制dependencyManagement内容
 		for _, idep := range ipom.DependencyManagement {
@@ -322,7 +348,7 @@ func parsePom(ctx context.Context, pom *Pom, getpom getPomFunc) *model.DepGraph 
 		}
 	}
 
-	root := &model.DepGraph{Vendor: pom.GroupId, Name: pom.ArtifactId, Version: pom.Version, Path: pom.File.Relpath()}
+	root := &model.DepGraph{Vendor: pom.GroupId, Name: pom.ArtifactId, Version: pom.Version, Path: pom.File.Relpath(), Language: model.Lan_Java, Project: true, Issues: append([]string(nil), pom.Issues...)}
 	root.Expand = pom
 
 	// 解析子依赖构建依赖关系
@@ -413,10 +439,11 @@ func parsePom(ctx context.Context, pom *Pom, getpom getPomFunc) *model.DepGraph 
 				logs.Debugf("find %s", dep.ImportPathStack())
 			} else {
 				logs.Warnf("find invalid %s", dep.ImportPathStack())
+				model.AddDiagnostic(ctx, "unresolved Maven dependency: "+dep.GAV())
 				continue
 			}
 
-			sub := &model.DepGraph{Vendor: dep.GroupId, Name: dep.ArtifactId, Version: dep.Version}
+			sub := &model.DepGraph{Vendor: dep.GroupId, Name: dep.ArtifactId, Version: dep.Version, Language: model.Lan_Java, PackageType: dep.Type, Classifier: dep.Classifier}
 			sub.Develop = dep.Scope == "test"
 
 			if subpom := getpom(*dep, np.Repositories, np.Mirrors); subpom != nil {
@@ -425,6 +452,7 @@ func parsePom(ctx context.Context, pom *Pom, getpom getPomFunc) *model.DepGraph 
 				subpom.Exclusions = append(subpom.Exclusions, np.Exclusions...)
 				// 依赖继承parent
 				inheritPom(subpom, getpom)
+				sub.Issues = append(sub.Issues, subpom.Issues...)
 				sub.Expand = subpom
 			}
 
@@ -440,6 +468,9 @@ func parsePom(ctx context.Context, pom *Pom, getpom getPomFunc) *model.DepGraph 
 var mavenOrigin = func(groupId, artifactId, version string, repos ...common.RepoConfig) *Pom {
 
 	var p *Pom
+	if p = loadFromM2(groupId, artifactId, version); p != nil {
+		return p
+	}
 
 	path := cache.Path(groupId, artifactId, version, model.Lan_Java)
 	cache.Load(path, func(reader io.Reader) {
@@ -448,6 +479,9 @@ var mavenOrigin = func(groupId, artifactId, version string, repos ...common.Repo
 
 	if p != nil {
 		return p
+	}
+	if config.Conf().Offline {
+		return nil
 	}
 
 	DownloadPomFromRepo(PomDependency{GroupId: groupId, ArtifactId: artifactId, Version: version}, func(r io.Reader) {
@@ -528,6 +562,9 @@ func DownloadPomFromRepo(dep PomDependency, do func(r io.Reader), repos ...commo
 // MvnTree 调用mvn dependency:tree解析依赖
 // pom: pom文件信息
 func MvnTree(ctx context.Context, pom *Pom) *model.DepGraph {
+	if config.Conf().Offline {
+		return nil
+	}
 
 	if !config.Conf().Optional.Dynamic {
 		return nil
@@ -548,26 +585,43 @@ func MvnTree(ctx context.Context, pom *Pom) *model.DepGraph {
 		// logs.Warn(err)
 		return nil
 	}
+	return parseMvnOutput(output, pom.ArtifactId, pom.File.Relpath())
+}
+
+func parseMvnOutput(output []byte, artifact, path string) *model.DepGraph {
+	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 	// 记录当前处理的依赖树数据
 	var lines []string
 	// 标记是否在依赖范围内树
 	tree := false
 	// 捕获依赖树起始位置
-	title := regexp.MustCompile(`--- [^\n]+ ---`)
+	title := regexp.MustCompile(`--- [^\n]+:tree[^\n]* ---`)
+	flush := func() *model.DepGraph {
+		root := parseMvnTree(lines)
+		if root != nil && root.Name == artifact {
+			root.Path = path
+			return root
+		}
+		return nil
+	}
 
 	scan := bufio.NewScanner(bytes.NewBuffer(output))
 	for scan.Scan() {
-		line := strings.TrimPrefix(scan.Text(), "[INFO] ")
+		line := strings.TrimPrefix(ansi.ReplaceAllString(scan.Text(), ""), "[INFO] ")
 		if title.MatchString(line) {
+			if tree {
+				if root := flush(); root != nil {
+					return root
+				}
+			}
+			lines = nil
 			tree = true
 			continue
 		}
 		if tree && strings.Trim(line, "-") == "" {
 			tree = false
-			root := parseMvnTree(lines)
-			if root != nil && root.Name == pom.ArtifactId {
-				root.Path = pom.File.Relpath()
+			if root := flush(); root != nil {
 				return root
 			}
 			lines = nil
@@ -579,6 +633,10 @@ func MvnTree(ctx context.Context, pom *Pom) *model.DepGraph {
 		}
 	}
 
+	// Some Maven versions omit the trailing dashed separator.
+	if tree {
+		return flush()
+	}
 	return nil
 }
 
@@ -592,9 +650,10 @@ func parseMvnTree(lines []string) *model.DepGraph {
 
 	_dep := model.NewDepGraphMap(nil, func(s ...string) *model.DepGraph {
 		return &model.DepGraph{
-			Vendor:  s[0],
-			Name:    s[1],
-			Version: s[2],
+			Vendor:   s[0],
+			Name:     s[1],
+			Version:  s[2],
+			Language: model.Lan_Java,
 		}
 	}).LoadOrStore
 
@@ -619,7 +678,19 @@ func parseMvnTree(lines []string) *model.DepGraph {
 			continue
 		}
 
-		dep := _dep(tags[0], tags[1], tags[3])
+		versionIndex := 3
+		if len(tags) >= 6 {
+			versionIndex = 4
+		}
+		classifier := ""
+		if versionIndex == 4 {
+			classifier = tags[3]
+		}
+		dep := _dep(tags[0], tags[1], tags[versionIndex], tags[2], classifier)
+		dep.PackageType = tags[2]
+		if versionIndex == 4 {
+			dep.Classifier = tags[3]
+		}
 
 		if dep == nil {
 			continue
@@ -640,6 +711,7 @@ func parseMvnTree(lines []string) *model.DepGraph {
 	}
 
 	if len(tops) > 0 {
+		tops[0].Project = true
 		return tops[0]
 	} else {
 		return nil

@@ -1,6 +1,7 @@
 package format
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,8 @@ type Report struct {
 }
 
 type TaskInfo struct {
-	ToolVersion string `json:"tool_version" xml:"tool_version" `
+	Diagnostics []string `json:"diagnostics,omitempty" xml:"diagnostics>issue,omitempty"`
+	ToolVersion string   `json:"tool_version" xml:"tool_version" `
 	// 检测目标名
 	AppName string `json:"app_name" xml:"app_name" `
 	// 检测文件大小
@@ -33,7 +35,8 @@ type TaskInfo struct {
 	ErrorString string `json:"error,omitempty" xml:"error,omitempty"`
 }
 
-func Save(report Report, output string) {
+func Save(report Report, output string) error {
+	var saveErr error
 	for out := range strings.SplitSeq(output, ",") {
 		logs.Infof("result save to %s", out)
 		switch filepath.Ext(out) {
@@ -45,7 +48,7 @@ func Save(report Report, output string) {
 			} else if strings.HasSuffix(out, ".dsdx.json") {
 				DsdxJson(report, out)
 			} else if strings.HasSuffix(out, ".cdx.json") {
-				CycloneDXJson(report, out)
+				saveErr = errors.Join(saveErr, CycloneDXJson(report, out))
 			} else if strings.HasSuffix(out, ".swid.json") {
 				SwidJson(report, out)
 			} else if strings.HasSuffix(out, ".bomsw.json") {
@@ -65,7 +68,7 @@ func Save(report Report, output string) {
 			} else if strings.HasSuffix(out, ".dsdx.xml") {
 				DsdxXml(report, out)
 			} else if strings.HasSuffix(out, ".cdx.xml") {
-				CycloneDXXml(report, out)
+				saveErr = errors.Join(saveErr, CycloneDXXml(report, out))
 			} else if strings.HasSuffix(out, ".swid.xml") {
 				SwidXml(report, out)
 			} else {
@@ -81,6 +84,7 @@ func Save(report Report, output string) {
 			Json(genReport(report), out)
 		}
 	}
+	return saveErr
 }
 
 func genReport(report Report) Report {
@@ -102,26 +106,24 @@ func genReport(report Report) Report {
 	return newReport
 }
 
-func outWrite(out string, do func(io.Writer) error) {
+func outWrite(out string, do func(io.Writer) error) error {
 
 	if out == "" {
-		do(os.Stdout)
-		return
+		return do(os.Stdout)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(out), 0777); err != nil {
 		logs.Warn(err)
 		fmt.Println(err)
-		return
+		return err
 	}
 
 	w, err := os.Create(out)
 	if err != nil {
 		logs.Warn(err)
+		return err
 	} else {
-		defer w.Close()
-		if err = do(w); err != nil {
-			logs.Warn(err)
-		}
+		err = do(w)
+		return errors.Join(err, w.Close())
 	}
 }

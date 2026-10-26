@@ -2,6 +2,7 @@ package python
 
 import (
 	"encoding/json"
+	"github.com/BurntSushi/toml"
 	"io"
 	"strings"
 
@@ -12,8 +13,8 @@ import (
 func ParsePipfile(file *model.File) *model.DepGraph {
 
 	pip := struct {
-		DevPackages map[string]string `toml:"dev-packages"`
-		Packages    map[string]string `toml:"packages"`
+		DevPackages map[string]any `toml:"dev-packages"`
+		Packages    map[string]any `toml:"packages"`
 	}{}
 
 	root := &model.DepGraph{Path: file.Relpath()}
@@ -21,16 +22,26 @@ func ParsePipfile(file *model.File) *model.DepGraph {
 	_dep := model.NewDepGraphMap(nil, func(s ...string) *model.DepGraph { return &model.DepGraph{Name: s[0], Version: s[1]} }).LoadOrStore
 
 	file.OpenReader(func(reader io.Reader) {
-		if err := json.NewDecoder(reader).Decode(&pip); err != nil {
+		if _, err := toml.NewDecoder(reader).Decode(&pip); err != nil {
 			logs.Warnf("unmarshal file %s err: %s", file.Relpath(), err)
 		}
 	})
 
+	versionOf := func(value any) string {
+		v, _ := value.(string)
+		if table, ok := value.(map[string]any); ok {
+			v, _ = table["version"].(string)
+		}
+		if v == "*" {
+			return ""
+		}
+		return strings.TrimPrefix(v, "==")
+	}
 	for name, version := range pip.Packages {
-		root.AppendChild(_dep(name, version))
+		root.AppendChild(_dep(name, versionOf(version)))
 	}
 	for name, version := range pip.DevPackages {
-		dep := _dep(name, version)
+		dep := _dep(name, versionOf(version))
 		if dep == nil {
 			continue
 		}

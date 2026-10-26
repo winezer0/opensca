@@ -134,7 +134,7 @@ var out = func(level Level, format string, v ...any) {
 }
 
 func Trace(v ...any) {
-	out(TRACE, "", v...)
+	out(TRACE, "%s", fmt.Sprint(v...))
 }
 
 func Tracef(format string, v ...any) {
@@ -142,7 +142,7 @@ func Tracef(format string, v ...any) {
 }
 
 func Debug(v ...any) {
-	out(DEBUG, "", v...)
+	out(DEBUG, "%s", fmt.Sprint(v...))
 }
 
 func Debugf(format string, v ...any) {
@@ -150,7 +150,7 @@ func Debugf(format string, v ...any) {
 }
 
 func Info(v ...any) {
-	out(INFO, "", v...)
+	out(INFO, "%s", fmt.Sprint(v...))
 }
 
 func Infof(format string, v ...any) {
@@ -158,7 +158,7 @@ func Infof(format string, v ...any) {
 }
 
 func Warn(v ...any) {
-	out(WARN, "", v...)
+	out(WARN, "%s", fmt.Sprint(v...))
 }
 
 func Warnf(format string, v ...any) {
@@ -166,13 +166,13 @@ func Warnf(format string, v ...any) {
 }
 
 func Error(v ...any) {
-	out(ERROR, "", v...)
-	out(ERROR, "", string(debug.Stack()))
+	out(ERROR, "%s", fmt.Sprint(v...))
+	out(ERROR, "%s", string(debug.Stack()))
 }
 
 func Errorf(format string, v ...any) {
 	out(ERROR, format, v...)
-	out(ERROR, "", string(debug.Stack()))
+	out(ERROR, "%s", string(debug.Stack()))
 }
 
 func Recover() {

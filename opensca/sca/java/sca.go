@@ -33,15 +33,20 @@ func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File,
 			}
 			file.OpenReader(func(reader io.Reader) {
 				p := ReadPom(reader)
+				if p == nil {
+					model.AddDiagnostic(ctx, "invalid archived POM: "+file.Relpath())
+					return
+				}
 				p.Update(&p.PomDependency)
 				if !p.Check() {
 					return
 				}
 				call(file, &model.DepGraph{
-					Vendor:  p.GroupId,
-					Name:    p.ArtifactId,
-					Version: p.Version,
-					Path:    file.Relpath(),
+					Vendor:   p.GroupId,
+					Name:     p.ArtifactId,
+					Version:  p.Version,
+					Language: model.Lan_Java,
+					Path:     file.Relpath(),
 				})
 			})
 		}
@@ -53,7 +58,11 @@ func (sca Sca) Sca(ctx context.Context, parent *model.File, files []*model.File,
 	for _, file := range files {
 		if filter.JavaPom(file.Relpath()) {
 			file.OpenReader(func(reader io.Reader) {
-				pom := ReadPom(reader)
+				pom := ReadPomAt(reader, file.Abspath())
+				if pom == nil {
+					model.AddDiagnostic(ctx, "invalid POM: "+file.Relpath())
+					return
+				}
 				pom.File = file
 				poms = append(poms, pom)
 			})

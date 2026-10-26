@@ -15,6 +15,8 @@ import (
 
 type DepDetailGraph struct {
 	Dep
+	Project                 bool              `json:"project,omitempty" xml:"project,omitempty"`
+	Issues                  []string          `json:"issues,omitempty" xml:"-"`
 	ID                      string            `json:"id,omitempty" xml:"id,omitempty"`
 	Develop                 bool              `json:"dev,omitempty" xml:"dev,omitempty"`
 	Direct                  bool              `json:"direct,omitempty" xml:"direct,omitempty"`
@@ -69,6 +71,11 @@ func NewDepDetailGraph(dep *model.DepGraph) *DepDetailGraph {
 }
 
 func (d *DepDetailGraph) Update(dep *model.DepGraph) {
+	d.PackageURL = dep.PackageURL
+	d.PackageType = dep.PackageType
+	d.Classifier = dep.Classifier
+	d.Project = dep.Project
+	d.Issues = append([]string(nil), dep.Issues...)
 	d.Name = dep.Name
 	d.Vendor = dep.Vendor
 	d.Version = dep.Version
@@ -136,7 +143,10 @@ func (d *DepDetailGraph) RemoveDev() {
 }
 
 func (dep *DepDetailGraph) Purl() string {
-	return model.Purl(dep.Vendor, dep.Name, dep.Version, model.Language(dep.Language))
+	if dep.PackageURL != "" {
+		return model.CanonicalPurl(dep.PackageURL)
+	}
+	return model.QualifiedPurl(dep.Vendor, dep.Name, dep.Version, model.Language(dep.Language), dep.PackageType, dep.Classifier)
 }
 
 // Vuln 组件漏洞
@@ -205,6 +215,9 @@ func vulnLanguageKey(language model.Language) []string {
 }
 
 type Dep struct {
+	PackageURL  string `json:"purl,omitempty" xml:"purl,omitempty"`
+	PackageType string `json:"package_type,omitempty" xml:"package_type,omitempty"`
+	Classifier  string `json:"classifier,omitempty" xml:"classifier,omitempty"`
 	// 厂商
 	Vendor string `json:"vendor,omitempty" xml:"vendor,omitempty"`
 	// 名称
@@ -216,7 +229,7 @@ type Dep struct {
 }
 
 func (d Dep) Key() string {
-	return fmt.Sprintf("%s:%s:%s:%s", d.Vendor, d.Name, d.Version, d.Language)
+	return fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s", d.Vendor, d.Name, d.Version, d.Language, d.PackageType, d.Classifier, d.PackageURL)
 }
 
 type License struct {
@@ -239,7 +252,7 @@ func SearchDetail(detailRoot *DepDetailGraph) (err error) {
 	localVulns := GetOrigin().SearchVuln(ds)
 
 	c := config.Conf().Origin
-	if c.Url != "" && c.Token != "" {
+	if c.Url != "" && c.Token != "" && !config.Conf().Offline {
 		// vulnerability
 		logs.Info("get server vuln")
 		serverVulns, err = GetServerVuln(ds)

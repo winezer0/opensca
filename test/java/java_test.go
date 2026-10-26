@@ -1,6 +1,9 @@
 package java
 
 import (
+	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
+	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/common"
@@ -211,5 +214,14 @@ func Test_JavaWithStatic(t *testing.T) {
 }
 
 func Test_JavaWithMvn(t *testing.T) {
+	if os.Getenv("OPENSCA_TEST_LIVE_MAVEN") != "1" {
+		t.Skip("live Maven resolution requires OPENSCA_TEST_LIVE_MAVEN=1; parser is covered by deterministic unit tests")
+	}
+	if _, err := exec.LookPath("mvn"); err != nil {
+		t.Fatal("live Maven test requested but mvn is unavailable:", err)
+	}
+	before := config.Conf().Optional.Dynamic
+	config.Conf().Optional.Dynamic = true
+	t.Cleanup(func() { config.Conf().Optional.Dynamic = before })
 	tool.RunTaskCase(t, java.Sca{NotUseStatic: true})(cases)
 }

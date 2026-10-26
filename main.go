@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "embed"
@@ -27,7 +29,7 @@ import (
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/php"
 )
 
-var version string
+var version = "3.0.11+fixes"
 var logo = `
    ___                   ____   ____    _    
   / _ \ _ __   ___ _ __ / ___| / ___|  / \   
@@ -37,6 +39,10 @@ var logo = `
        |_|`
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 
 	fmt.Println(logo)
 	fmt.Println("Current version:", version)
@@ -46,15 +52,26 @@ func main() {
 
 	// 初始化HttpClient
 	initHttpClient()
+	common.SetOffline(config.Conf().Offline)
+	defer common.SetOffline(false)
+	if config.Conf().Offline {
+		config.Conf().Optional.Dynamic = false
+		if strings.Contains(config.Conf().Path, "://") && !strings.HasPrefix(config.Conf().Path, "file://") {
+			fmt.Fprintln(os.Stderr, "offline mode requires a local project path")
+			return 2
+		}
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	// 检测参数
-	arg := &opensca.TaskArg{DataOrigin: config.Conf().Path}
+	arg := &opensca.TaskArg{DataOrigin: config.Conf().Path, InputType: config.Conf().InputType}
 
 	// 是否跳过压缩包检测
 	if config.Conf().Optional.DirOnly {
 		arg.ExtractFileFilter = func(relpath string) bool { return false }
 	}
-	arg.IgnoreFileFilter = filter.IgnorePatterns(config.Conf().Optional.Ignore)
+	arg.IgnoreFileFilter = filter.IgnorePatterns(scanIgnorePatterns())
 
 	// 开启进度条
 	var stopProgress func()
@@ -63,7 +80,7 @@ func main() {
 	}
 
 	// 运行检测任务
-	result := opensca.RunTask(context.Background(), arg)
+	result := opensca.RunTask(ctx, arg)
 
 	// 日志中记录检测结果
 	if result.Error != nil {
@@ -79,7 +96,13 @@ func main() {
 	report := taskReport(result)
 
 	// 导出报告
-	format.Save(report, config.Conf().Output)
+	if err := format.Save(report, config.Conf().Output); err != nil {
+		logs.Error(err)
+		if stopProgress != nil {
+			stopProgress()
+		}
+		return 2
+	}
 
 	// 等待进度条完成
 	if config.Conf().Optional.ProgressBar {
@@ -91,19 +114,33 @@ func main() {
 
 	// 打印概览信息
 	dep, vul := format.Statis(report)
-	fmt.Println("\nComplete!\n" + dep + vul)
-	logs.Info("\nComplete!\n" + dep + vul)
+	status := "Complete"
+	if result.Error != nil {
+		status = "failed"
+	} else if len(report.TaskInfo.Diagnostics) > 0 {
+		status = "incomplete"
+	}
+	fmt.Println("\n" + status + "\n" + dep + vul)
+	logs.Info("\n" + status + "\n" + dep + vul)
 
 	// 发送检测报告
-	if err := format.Saas(report); err != nil {
-		logs.Warnf("saas report error: %s", err)
+	if !config.Conf().Offline && !config.Conf().DependenciesOnly {
+		if err := format.Saas(report); err != nil {
+			logs.Warnf("saas report error: %s", err)
+		}
 	}
 
 	// 开启ui
 	if config.Conf().Optional.UI {
 		ui.OpenUI(report)
 	}
-
+	if result.Error != nil {
+		return 2
+	}
+	if len(report.TaskInfo.Diagnostics) > 0 {
+		return 3
+	}
+	return 0
 }
 
 func args() {
@@ -112,6 +149,7 @@ func args() {
 	login := false
 	cfgf := ""
 	proj := "x"
+	profiles := ""
 	cfg := config.Conf()
 	flag.BoolVar(&v, "version", false, "-version")
 	flag.BoolVar(&login, "login", false, "login to cloud server. example: -login")
@@ -121,6 +159,15 @@ func args() {
 	flag.StringVar(&cfg.LogFile, "log", cfg.LogFile, "-log ./my_opensca_log.txt")
 	flag.StringVar(&cfg.Origin.Token, "token", "", "web token, example: -token xxxx")
 	flag.StringVar(&proj, "proj", proj, "saas project id, example: -proj xxxx")
+	flag.BoolVar(&cfg.Offline, "offline", cfg.Offline, "disable all network access and dynamic builds")
+	flag.StringVar(&cfg.InputType, "input-type", cfg.InputType, "auto, project, or sbom; auto excludes SBOMs when scanning directories")
+	flag.StringVar(&cfg.CacheDir, "cache-dir", cfg.CacheDir, "dependency metadata cache directory")
+	flag.StringVar(&cfg.Java.LocalRepository, "maven-repo", cfg.Java.LocalRepository, "Maven local repository")
+	flag.StringVar(&cfg.Java.Settings, "maven-settings", cfg.Java.Settings, "Maven user settings.xml")
+	flag.StringVar(&profiles, "profiles", "", "comma-separated Maven profiles; prefix ! to disable")
+	flag.StringVar(&cfg.Java.JDK, "java-version", cfg.Java.JDK, "JDK version used for profile activation")
+	flag.BoolVar(&cfg.DependenciesOnly, "dependencies-only", cfg.DependenciesOnly, "resolve dependencies and export reports without vulnerability lookup")
+	flag.BoolVar(&cfg.IncludeProject, "include-project", cfg.IncludeProject, "include project module PURLs in CycloneDX components")
 	// flag.StringVar(&cfg.Optional.Proxy, "proxy", "", "set global proxy for http requests, eg: http://127.0.0.1:7890")
 	flag.Parse()
 
@@ -132,6 +179,9 @@ func args() {
 	flag.Parse()
 
 	cfg.Origin.Url = strings.TrimRight(cfg.Origin.Url, "/")
+	if profiles != "" {
+		cfg.Java.Profiles = strings.Split(profiles, ",")
+	}
 	if proj != "x" {
 		cfg.Origin.Proj = &proj
 	}
@@ -181,14 +231,15 @@ func initHttpClient() {
 
 func startProgressBar(arg *opensca.TaskArg) (stop func()) {
 
-	progress := true
-
-	var find, deps, bar int
+	var progress atomic.Bool
+	progress.Store(true)
+	var find, deps atomic.Int64
+	var bar int
 
 	go func() {
 		logos := []string{`[   ]`, `[=  ]`, `[== ]`, `[===]`, `[ ==]`, `[  =]`, `[   ]`, `[  =]`, `[ ==]`, `[===]`, `[== ]`, `[=  ]`}
-		for progress {
-			fmt.Printf("\r%s file:%d dependencies:%d", logos[bar], find, deps)
+		for progress.Load() {
+			fmt.Printf("\r%s file:%d dependencies:%d", logos[bar], find.Load(), deps.Load())
 			bar = (bar + 1) % len(logos)
 			<-time.After(time.Millisecond * 100)
 		}
@@ -196,11 +247,11 @@ func startProgressBar(arg *opensca.TaskArg) (stop func()) {
 
 	// 记录解析过的文件及依赖
 	arg.ResCallFunc = func(file *model.File, root ...*model.DepGraph) {
-		find++
+		find.Add(1)
 		for _, dep := range root {
 			dep.ForEachNode(func(p, n *model.DepGraph) bool {
 				if n.Name != "" {
-					deps++
+					deps.Add(1)
 				}
 				return true
 			})
@@ -208,7 +259,7 @@ func startProgressBar(arg *opensca.TaskArg) (stop func()) {
 	}
 
 	return func() {
-		progress = false
+		progress.Store(false)
 	}
 }
 
@@ -226,6 +277,7 @@ func taskReport(r opensca.TaskResult) format.Report {
 	report.TaskInfo.ToolVersion = version
 	report.TaskInfo.AppName = appName
 	report.TaskInfo.Size = r.Size
+	report.TaskInfo.Diagnostics = append([]string(nil), r.Diagnostics...)
 
 	if r.Error != nil {
 		report.TaskInfo.ErrorString = r.Error.Error()
@@ -241,9 +293,21 @@ func taskReport(r opensca.TaskResult) format.Report {
 		root = r.Deps[0]
 	}
 	report.DepDetailGraph = detail.NewDepDetailGraph(root)
+	report.ForEach(func(n *detail.DepDetailGraph) bool {
+		for _, issue := range n.Issues {
+			report.TaskInfo.Diagnostics = append(report.TaskInfo.Diagnostics, issue)
+		}
+		if n.Name != "" && !n.Project && n.Purl() == "" {
+			report.TaskInfo.Diagnostics = append(report.TaskInfo.Diagnostics, "component has no valid PURL: "+n.Name+"@"+n.Version)
+		}
+		return true
+	})
+	for _, issue := range report.TaskInfo.Diagnostics {
+		logs.Warn(issue)
+	}
 
 	// 组件去重
-	if optional.Dedup {
+	if optional.Dedup && !config.Conf().DependenciesOnly && !strings.Contains(config.Conf().Output, ".cdx.") {
 		logs.Info("remove dup component")
 		report.RemoveDedup()
 	}
@@ -255,7 +319,10 @@ func taskReport(r opensca.TaskResult) format.Report {
 	}
 
 	// 查询组件详情(漏洞/许可证)
-	err := detail.SearchDetail(report.DepDetailGraph)
+	var err error
+	if !config.Conf().DependenciesOnly {
+		err = detail.SearchDetail(report.DepDetailGraph)
+	}
 	if err != nil {
 		logs.Warnf("database origin error: %s", err.Error())
 		if report.TaskInfo.ErrorString != "" {

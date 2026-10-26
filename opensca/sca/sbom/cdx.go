@@ -3,7 +3,9 @@ package sbom
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/CycloneDX/cyclonedx-go"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
@@ -11,17 +13,25 @@ import (
 
 func ParseCdxJson(f *model.File) *model.DepGraph {
 	bom := &cyclonedx.BOM{}
+	var decodeErr error
 	f.OpenReader(func(reader io.Reader) {
-		json.NewDecoder(reader).Decode(&bom)
+		decodeErr = json.NewDecoder(reader).Decode(&bom)
 	})
+	if decodeErr != nil {
+		return nil
+	}
 	return parseCdxBom(f, bom)
 }
 
 func ParseCdxXml(f *model.File) *model.DepGraph {
 	bom := &cyclonedx.BOM{}
+	var decodeErr error
 	f.OpenReader(func(reader io.Reader) {
-		xml.NewDecoder(reader).Decode(&bom)
+		decodeErr = xml.NewDecoder(reader).Decode(&bom)
 	})
+	if decodeErr != nil {
+		return nil
+	}
 	return parseCdxBom(f, bom)
 }
 
@@ -31,7 +41,7 @@ func parseCdxBom(f *model.File, bom *cyclonedx.BOM) *model.DepGraph {
 		return nil
 	}
 
-	if bom.BOMFormat == "" && bom.XMLNS == "" {
+	if bom.BOMFormat != "CycloneDX" && !strings.HasPrefix(bom.XMLNS, "http://cyclonedx.org/schema/bom/") {
 		return nil
 	}
 
@@ -50,13 +60,17 @@ func parseCdxBom(f *model.File, bom *cyclonedx.BOM) *model.DepGraph {
 		}
 	}).LoadOrStore
 
-	for _, d := range *bom.Components {
+	for i, d := range *bom.Components {
+		if d.BOMRef == "" {
+			d.BOMRef = fmt.Sprintf("component-%d", i)
+		}
 
 		if d.PackageURL != "" {
 			vendor, name, version, language := model.ParsePurl(d.PackageURL)
 			if name != "" {
 				dep := _dep(d.BOMRef, vendor, name, version)
 				dep.Language = language
+				dep.PackageURL = model.CanonicalPurl(d.PackageURL)
 				depRefMap[d.BOMRef] = dep
 				continue
 			}
@@ -83,6 +97,24 @@ func parseCdxBom(f *model.File, bom *cyclonedx.BOM) *model.DepGraph {
 	for _, dep := range depRefMap {
 		if len(dep.Parents) == 0 {
 			root.AppendChild(dep)
+		}
+	}
+	// Preserve components in disconnected cycles as well as ordinary roots.
+	visited := map[*model.DepGraph]bool{}
+	visit := func(n *model.DepGraph) {
+		n.ForEachNode(func(_, child *model.DepGraph) bool {
+			if visited[child] {
+				return false
+			}
+			visited[child] = true
+			return true
+		})
+	}
+	visit(root)
+	for _, dep := range depRefMap {
+		if !visited[dep] {
+			root.AppendChild(dep)
+			visit(dep)
 		}
 	}
 

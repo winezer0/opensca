@@ -12,9 +12,23 @@ import (
 
 type Config struct {
 	BaseConfig
-	Optional OptionalConfig `json:"optional"`
-	Repo     RepoConfig     `json:"repo"`
-	Origin   OriginConfig   `json:"origin"`
+	Offline          bool           `json:"offline"`
+	InputType        string         `json:"input_type"`
+	CacheDir         string         `json:"cache_dir"`
+	Java             JavaConfig     `json:"java"`
+	DependenciesOnly bool           `json:"dependencies_only"`
+	IncludeProject   bool           `json:"include_project"`
+	Optional         OptionalConfig `json:"optional"`
+	Repo             RepoConfig     `json:"repo"`
+	Origin           OriginConfig   `json:"origin"`
+}
+
+type JavaConfig struct {
+	LocalRepository string            `json:"local_repository"`
+	Settings        string            `json:"settings"`
+	Profiles        []string          `json:"profiles"`
+	Properties      map[string]string `json:"properties"`
+	JDK             string            `json:"jdk"`
 }
 
 type BaseConfig struct {

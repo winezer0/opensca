@@ -1,8 +1,9 @@
 package model
 
 import (
-	"fmt"
 	"strings"
+
+	packageurl "github.com/package-url/packageurl-go"
 )
 
 type Language string
@@ -27,6 +28,7 @@ var purlRmap = map[string]Language{
 	"maven":    Lan_Java,
 	"npm":      Lan_JavaScript,
 	"pypi":     Lan_Python,
+	"hex":      Lan_Erlang,
 }
 
 var purlMap = map[Language]string{}
@@ -38,50 +40,60 @@ func init() {
 }
 
 func Purl(vendor, name, version string, language Language) string {
-	pkg := ""
-	if g, ok := purlMap[language]; ok {
-		pkg = g
+	return QualifiedPurl(vendor, name, version, language, "", "")
+}
+
+// QualifiedPurl never invents an ecosystem or an unresolved version.
+func QualifiedPurl(vendor, name, version string, language Language, typ, classifier string) string {
+	pkg := purlMap[language]
+	if pkg == "" || name == "" || version == "" || strings.ContainsAny(version, "${}[](),*^~<>= ") {
+		return ""
 	}
-	if vendor == "" {
-		return fmt.Sprintf("pkg:%s/%s@%s", pkg, name, version)
+	if language != Lan_Java && vendor == "" {
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			vendor, name = name[:i], name[i+1:]
+		}
 	}
-	return fmt.Sprintf("pkg:%s/%s/%s@%s", pkg, vendor, name, version)
+	if language == Lan_Java && vendor == "" {
+		return ""
+	}
+	q := map[string]string{}
+	if typ != "" && typ != "jar" {
+		q["type"] = typ
+	}
+	if classifier != "" {
+		q["classifier"] = classifier
+	}
+	p := packageurl.NewPackageURL(pkg, vendor, name, version, packageurl.QualifiersFromMap(q), "")
+	return CanonicalPurl(p.ToString())
+}
+
+// CanonicalPurl validates a complete identity and requires a concrete version.
+func CanonicalPurl(raw string) string {
+	p, err := packageurl.FromString(raw)
+	if err != nil || p.Type == "" || p.Name == "" || p.Version == "" || strings.ContainsAny(p.Version, "${}[](),*^~<>= ") {
+		return ""
+	}
+	if p.Type == "maven" && p.Namespace == "" {
+		return ""
+	}
+	return p.ToString()
 }
 
 func ParsePurl(purl string) (vendor, name, version string, language Language) {
-
-	// purl示例 pkg:maven/org.apache.xmlgraphics/batik-anim@1.9.1?packaging=sources
-
-	if i := strings.LastIndex(purl, "?"); i != -1 {
-		purl = purl[:i]
-	}
-
-	if i := strings.Index(purl, "/"); i == -1 {
+	if CanonicalPurl(purl) == "" {
 		return
-	} else {
-		if pkg := strings.Split(purl[:i], `:`); len(pkg) != 2 {
-			return
-		} else {
-			if l, ok := purlRmap[pkg[1]]; ok {
-				language = l
-			}
-		}
-		purl = purl[i+1:]
 	}
-
-	if i := strings.LastIndex(purl, "@"); i == -1 {
+	p, err := packageurl.FromString(purl)
+	if err != nil {
 		return
-	} else {
-		version = purl[i+1:]
-		name = purl[:i]
 	}
-
+	language = purlRmap[p.Type]
+	name, version = p.Name, p.Version
 	if language == Lan_Java {
-		if i := strings.LastIndex(name, "/"); i != -1 {
-			vendor = name[:i]
-			name = name[i+1:]
-		}
+		vendor = p.Namespace
+	} else if p.Namespace != "" {
+		name = p.Namespace + "/" + name
 	}
-
 	return
 }
