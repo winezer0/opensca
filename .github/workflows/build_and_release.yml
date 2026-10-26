@@ -1,72 +1,157 @@
-name: Build Binaries And Release
+name: Release Build
 
 on:
   push:
     tags:
-      - v*.*.*
+      - 'v*'
   workflow_dispatch:
     inputs:
-        tag:
-            description: 'Tag to build'
-            required: true
-        log_level:
-            description: 'Log level'
-            required: false
-            default: 'info'
+      version:
+        description: Release version to publish (for example v3.1.0)
+        required: true
+        default: v0.0.1
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  createRelease:
-    name: Create Release
+  resolve-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
     steps:
-      - name: Build Changelog
-        id: changelog
-        uses: mikepenz/release-changelog-builder-action@v3
+      - name: Validate release version
+        id: resolve
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body: ${{ steps.changelog.outputs.changelog }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$INPUT_VERSION"
+          else
+            version="$GITHUB_REF_NAME"
+          fi
 
-  releases-matrix:
-    name: Release Binary
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve-version
     runs-on: ubuntu-latest
-    needs: [createRelease]
     strategy:
+      fail-fast: false
       matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64, 386]
-        # goarch: [amd64, arm64, 386, loong64]
-        exclude:
-          - goarch: arm64
-            goos: windows
-          - goarch: 386
-            goos: darwin
-          - goarch: 386
-            goos: windows
-          # - goarch: loong64
-          #   goos: windows
-          # - goarch: loong64
-          #   goos: darwin
+        include:
+          - goos: linux
+            goarch: amd64
+            extension: ''
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            extension: ''
+            archive: tar.gz
+          - goos: linux
+            goarch: '386'
+            extension: ''
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            extension: .exe
+            archive: zip
+          - goos: darwin
+            goarch: amd64
+            extension: ''
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            extension: ''
+            archive: tar.gz
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set env
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-      - name: Create VERSION file
-        run: echo ${{ env.RELEASE_VERSION }} > VERSION
-      - name: Build And Release
-        uses: wangyoucao577/go-release-action@v1
-        env:
-          CGO_ENABLED: 0
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          project_path: "./"
-          binary_name: opensca-cli
-          sha256sum: true
-          md5sum: false
-          extra_files: README.md config.json db-demo.json VERSION
-          ldflags: "-s -w -X 'main.version=${{ env.RELEASE_VERSION }}' "
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Build and package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+          BINARY_EXTENSION: ${{ matrix.extension }}
+          ARCHIVE_FORMAT: ${{ matrix.archive }}
+        shell: bash
+        run: |
+          mkdir -p release
+          go build -trimpath \
+            -ldflags "-s -w -X main.version=${RELEASE_VERSION}" \
+            -o "release/opensca-cli${BINARY_EXTENSION}" .
+          printf '%s\n' "$RELEASE_VERSION" > release/VERSION
+          cp README.md LICENSE config.json db-demo.json release/
+
+          asset="opensca-cli_${RELEASE_VERSION}_${GOOS}_${GOARCH}.${ARCHIVE_FORMAT}"
+          if [[ "$ARCHIVE_FORMAT" == "zip" ]]; then
+            (cd release && zip -q "../$asset" opensca-cli.exe VERSION README.md LICENSE config.json db-demo.json)
+          else
+            tar -czf "$asset" -C release opensca-cli VERSION README.md LICENSE config.json db-demo.json
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opensca-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: opensca-cli_${{ needs.resolve-version.outputs.version }}_${{ matrix.goos }}_${{ matrix.goarch }}.${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [resolve-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release and upload builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.version }}
+          RELEASE_TARGET: ${{ github.sha }}
+        shell: bash
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_args=(--generate-notes)
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_TARGET" \
+              --title "$RELEASE_TAG" \
+              "${release_args[@]}"
+          fi
+
+          mapfile -d '' assets < <(find release-assets -type f -print0)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo 'No release assets were downloaded' >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+          gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false
