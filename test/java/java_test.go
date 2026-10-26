@@ -221,7 +221,7 @@ func Test_JavaWithMvn(t *testing.T) {
 		t.Fatal("live Maven test requested but mvn is unavailable:", err)
 	}
 	before := config.Conf().Optional.Dynamic
-	config.Conf().Optional.Dynamic = true
+	config.Conf().Optional.Dynamic = config.DynamicOn
 	t.Cleanup(func() { config.Conf().Optional.Dynamic = before })
 	tool.RunTaskCase(t, java.Sca{NotUseStatic: true})(cases)
 }

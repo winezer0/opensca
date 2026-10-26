@@ -55,13 +55,18 @@
     "proxy": "",
 
     // 允许动态命令
-    // allow dynamic command, eg: mvn
-    "dynamic": false
+    // auto runs Maven when installed; legacy true/false values remain supported.
+    "dynamic": "auto"
 
   },
 
   // 组件仓库配置
   // repo config
+  "java": {
+    // Optional Maven executable; empty searches PATH for mvn.
+    "maven_command": ""
+  },
+
   "repo": {
 
     // maven repo

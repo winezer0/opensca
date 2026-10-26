@@ -562,30 +562,102 @@ func DownloadPomFromRepo(dep PomDependency, do func(r io.Reader), repos ...commo
 // MvnTree 调用mvn dependency:tree解析依赖
 // pom: pom文件信息
 func MvnTree(ctx context.Context, pom *Pom) *model.DepGraph {
-	if config.Conf().Offline {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if pom == nil || config.Conf().Offline {
 		return nil
 	}
 
-	if !config.Conf().Optional.Dynamic {
+	mode := config.Conf().Optional.Dynamic
+	if mode == config.DynamicOff {
+		return nil
+	}
+	if mode != "" && mode != config.DynamicAuto && mode != config.DynamicOn {
+		model.AddDiagnostic(ctx, fmt.Sprintf("invalid dynamic mode %q; using static Maven parsing", mode))
 		return nil
 	}
 
-	if pom == nil {
+	var err error
+	mvn := strings.TrimSpace(config.Conf().Java.MavenCommand)
+	if mvn == "" {
+		mvn, err = exec.LookPath("mvn")
+	}
+	if err != nil {
+		logs.Warn("Maven not found; using static POM parsing")
+		model.AddDiagnostic(ctx, "Maven dynamic resolution unavailable (mvn not found); using static POM parsing")
 		return nil
 	}
 
-	if _, err := exec.LookPath("mvn"); err != nil {
-		return nil
+	args := []string{"dependency:tree"}
+	profiles := mavenProfileIDs(pom)
+	if len(profiles) > 0 {
+		args = append(args, "-P", strings.Join(profiles, ","))
 	}
-
-	cmd := exec.CommandContext(ctx, "mvn", "dependency:tree")
+	cmd := exec.CommandContext(ctx, mvn, args...)
 	cmd.Dir = filepath.Dir(pom.File.Abspath())
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// logs.Warn(err)
+		logs.Warnf("Maven dependency tree failed for %s; using static POM parsing: %v", pom.File.Relpath(), err)
+		model.AddDiagnostic(ctx, fmt.Sprintf("Maven dynamic resolution failed for %s; using static POM parsing: %v", pom.File.Relpath(), err))
 		return nil
 	}
-	return parseMvnOutput(output, pom.ArtifactId, pom.File.Relpath())
+	dep := parseMvnOutput(output, pom.ArtifactId, pom.File.Relpath())
+	if dep == nil {
+		model.AddDiagnostic(ctx, fmt.Sprintf("Maven dependency tree output could not be parsed for %s; using static POM parsing", pom.File.Relpath()))
+		return nil
+	}
+	profileSummary := "all declared profiles"
+	if len(config.Conf().Java.Profiles) > 0 {
+		profileSummary = "configured profiles"
+	} else if len(profiles) == 0 {
+		profileSummary = "no project profiles"
+	}
+	logs.Infof("Maven dynamic resolution used %s for %s", profileSummary, pom.File.Relpath())
+	return dep
+}
+
+func mavenProfileIDs(pom *Pom) []string {
+	all := make([]string, 0, len(pom.Profiles))
+	seen := map[string]bool{}
+	for _, profile := range pom.Profiles {
+		id := strings.TrimSpace(profile.ID)
+		if id != "" && !seen[id] {
+			all = append(all, id)
+			seen[id] = true
+		}
+	}
+
+	configured := config.Conf().Java.Profiles
+	if len(configured) == 0 {
+		return all
+	}
+	selected := make([]string, 0, len(configured))
+	hasPositive := false
+	disabled := map[string]bool{}
+	for _, raw := range configured {
+		id := strings.TrimSpace(raw)
+		if id == "" {
+			continue
+		}
+		if strings.HasPrefix(id, "!") || strings.HasPrefix(id, "-") {
+			disabled[id[1:]] = true
+			selected = append(selected, id)
+		} else {
+			hasPositive = true
+			selected = append(selected, id)
+		}
+	}
+	if hasPositive {
+		return selected
+	}
+	selected = selected[:0]
+	for _, id := range all {
+		if !disabled[id] {
+			selected = append(selected, id)
+		}
+	}
+	return selected
 }
 
 func parseMvnOutput(output []byte, artifact, path string) *model.DepGraph {

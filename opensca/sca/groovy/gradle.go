@@ -116,7 +116,7 @@ type gradleDep struct {
 
 func GradleTree(ctx context.Context, dir *model.File) []*model.DepGraph {
 
-	if !config.Conf().Optional.Dynamic {
+	if !config.Conf().Optional.Dynamic.Enabled() {
 		return nil
 	}
 

@@ -19,7 +19,7 @@ import (
 
 // ParsePythonWithEnv 借助pipenv解析python依赖
 func ParsePythonWithEnv(ctx context.Context, file *model.File) *model.DepGraph {
-	if config.Conf().Offline || !config.Conf().Optional.Dynamic {
+	if config.Conf().Offline || !config.Conf().Optional.Dynamic.Enabled() {
 		return nil
 	}
 
@@ -127,7 +127,7 @@ func pipenvGraph(ctx context.Context, dir string) *model.DepGraph {
 }
 
 func runCmd(ctx context.Context, dir string, cmd string, args ...string) ([]byte, bool) {
-	if !config.Conf().Optional.Dynamic {
+	if !config.Conf().Optional.Dynamic.Enabled() {
 		return nil, false
 	}
 	c := exec.CommandContext(ctx, cmd, args...)

@@ -55,7 +55,7 @@ func run() int {
 	common.SetOffline(config.Conf().Offline)
 	defer common.SetOffline(false)
 	if config.Conf().Offline {
-		config.Conf().Optional.Dynamic = false
+		config.Conf().Optional.Dynamic = config.DynamicOff
 		if strings.Contains(config.Conf().Path, "://") && !strings.HasPrefix(config.Conf().Path, "file://") {
 			fmt.Fprintln(os.Stderr, "offline mode requires a local project path")
 			return 2
@@ -164,6 +164,7 @@ func args() {
 	flag.StringVar(&cfg.CacheDir, "cache-dir", cfg.CacheDir, "dependency metadata cache directory")
 	flag.StringVar(&cfg.Java.LocalRepository, "maven-repo", cfg.Java.LocalRepository, "Maven local repository")
 	flag.StringVar(&cfg.Java.Settings, "maven-settings", cfg.Java.Settings, "Maven user settings.xml")
+	flag.StringVar(&cfg.Java.MavenCommand, "maven-command", cfg.Java.MavenCommand, "Maven executable path")
 	flag.StringVar(&profiles, "profiles", "", "comma-separated Maven profiles; prefix ! to disable")
 	flag.StringVar(&cfg.Java.JDK, "java-version", cfg.Java.JDK, "JDK version used for profile activation")
 	flag.BoolVar(&cfg.DependenciesOnly, "dependencies-only", cfg.DependenciesOnly, "resolve dependencies and export reports without vulnerability lookup")
