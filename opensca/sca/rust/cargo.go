@@ -17,6 +17,7 @@ func ParseCargoLock(file *model.File) *model.DepGraph {
 		Pkgs []struct {
 			Name         string   `toml:"name"`
 			Version      string   `toml:"version"`
+			Source       string   `toml:"source"`
 			Dependencies []string `toml:"dependencies"`
 		} `toml:"package"`
 	}{}
@@ -30,26 +31,36 @@ func ParseCargoLock(file *model.File) *model.DepGraph {
 
 	// 记录组件信息
 	depMap := map[string]*model.DepGraph{}
-	_dep := model.NewDepGraphMap(nil, func(s ...string) *model.DepGraph {
-		return &model.DepGraph{
-			Name:    s[0],
-			Version: s[1],
-		}
-	}).LoadOrStore
+	depKey := func(name, version string) string { return name + "\x00" + version }
+	byName := map[string][]*model.DepGraph{}
 	for _, c := range cargo.Pkgs {
-		depMap[c.Name] = _dep(c.Name, c.Version)
+		key := depKey(c.Name, c.Version)
+		dep := depMap[key]
+		if dep == nil {
+			dep = &model.DepGraph{Name: c.Name, Version: c.Version, Project: c.Source == ""}
+			depMap[key] = dep
+			byName[c.Name] = append(byName[c.Name], dep)
+		}
 	}
 
 	// 记录依赖关系
 	for _, c := range cargo.Pkgs {
-		dep := _dep(c.Name, c.Version)
+		dep := depMap[depKey(c.Name, c.Version)]
 		for _, dependency := range c.Dependencies {
-			i := strings.Index(dependency, " ")
-			if i != -1 {
-				name, version := dependency[:i], dependency[i+1:]
-				dep.AppendChild(_dep(name, version))
-			} else {
-				dep.AppendChild(depMap[dependency])
+			parts := strings.Fields(dependency)
+			if len(parts) == 0 {
+				continue
+			}
+			name, version := parts[0], ""
+			if len(parts) > 1 && !strings.HasPrefix(parts[1], "(") {
+				version = parts[1]
+			}
+			if version != "" {
+				dep.AppendChild(depMap[depKey(name, version)])
+				continue
+			}
+			if len(byName[name]) == 1 {
+				dep.AppendChild(byName[name][0])
 			}
 		}
 	}

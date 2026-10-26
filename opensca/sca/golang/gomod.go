@@ -16,7 +16,7 @@ import (
 // ParseGomod 解析go.mod文件
 func ParseGomod(file *model.File) *model.DepGraph {
 
-	root := &model.DepGraph{Path: file.Relpath()}
+	root := &model.DepGraph{Path: file.Relpath(), Project: true}
 
 	var require bool
 	var replace bool

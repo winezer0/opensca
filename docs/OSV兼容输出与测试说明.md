@@ -62,6 +62,30 @@ go test ./test/java -run Test_JavaWithMvn -count=1 -v -timeout 300s
 
 ## 本机验证记录（2026-10-26）
 
+### OpenSCA → CycloneDX → osv-scanner 场景矩阵
+
+`osv_compatibility_test.go` 会构建 OpenSCA CLI、扫描临时项目、检查输出 PURL，再调用本机 osv-scanner 2.7.0 离线扫描同一份 CycloneDX。每个生态的 OSV 记录是临时生成的精确版本测试公告，不依赖公开漏洞库，也不代表真实库的覆盖程度。共 10 个子场景，检查受影响/修复版本、传递依赖、scoped PURL、工程根排除、同名多版本以及最终 OSV 命中。
+
+| 开发场景 | 输入 | 输出/OSV 验证 | 结果 |
+|---|---|---|---|
+| Maven 直接依赖 | POM + 本地 Maven 仓库 | log4j-core 2.14.1 命中，2.17.1 不命中 | 通过 |
+| Maven 传递依赖 | app → wrapper → log4j-core | 两层组件与依赖边保留，OSV 命中传递组件 | 通过 |
+| npm scoped 依赖 | package.json + lock v3 | `pkg:npm/%40acme/demo@1.2.3` 命中 | 通过 |
+| Go module | go.mod | Go PURL 和 OSV 漏洞关联 | 通过 |
+| Python 固定版本 | requirements.txt | PyPI PURL 和 OSV 漏洞关联 | 通过 |
+| Composer | composer.json + composer.lock | Packagist PURL 和 OSV 漏洞关联 | 通过 |
+| RubyGems | Gemfile.lock | gem PURL 和 OSV 漏洞关联 | 通过 |
+| Cargo | Cargo.lock | crates.io PURL 和 OSV 漏洞关联 | 通过 |
+| Cargo 多版本 | 同一个 lockfile 含 serde 1.0.188/1.0.200 | 两个独立 PURL 均输出，仅公告影响版本命中 | 通过 |
+
+### 本轮联测发现并修复
+
+- Go module 和 Composer 项目根最初未标记为工程节点，被误输出成无版本依赖并让任务错误返回 3。现已标记项目根并保留在 CycloneDX metadata。
+- Cargo 解析曾用 crate 名作为唯一 key，同名多版本会互相覆盖；依赖引用携带 registry source 时也会污染版本字符串。现改用 name + version 区分组件，并从依赖引用提取具体版本。两个版本的外部扫描回归通过。
+- 不同生态的组件身份都由 PURL 供 scanner 匹配。测试确认 `%40` scoped npm 名称和 Maven group/artifact 结构可命中对应公告。
+
+- 以上均为直接依赖的独立生态测试；已另测 Maven 传递依赖。没有验证各生态所有 lockfile 版本、workspace、平台条件或私有 registry 行为。
+
 - 全量默认测试（`go test ./... -count=1`）：通过，同时显式启用并通过外部 OSV 兼容性测试。
 - 全量竞态检查（`go test -race ./... -count=1`）：通过。
 - `go vet ./...`、`git diff --check`：通过。

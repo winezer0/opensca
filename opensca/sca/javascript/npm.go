@@ -162,7 +162,7 @@ func ParsePackageJsonWithNode(pkgjson *PackageJson, nodeMap map[string]*PackageJ
 		return dep
 	}
 
-	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath()}
+	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath(), Project: true}
 	// root.AppendLicense(pkgjson.License)
 	root.Expand = pkgjson
 
@@ -247,7 +247,7 @@ func ParsePackageJsonWithLock(pkgjson *PackageJson, pkglock *PackageLock) *model
 		}
 	}
 
-	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath()}
+	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath(), Project: true}
 	// root.AppendLicense(pkgjson.License)
 
 	for name := range pkgjson.Dependencies {
@@ -274,7 +274,7 @@ func ParsePackageJsonWithLockV3(pkgjson *PackageJson, pkglock *PackageLock) *mod
 		}
 	}
 
-	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath()}
+	root := &model.DepGraph{Name: pkgjson.Name, Version: pkgjson.Version, Path: pkgjson.File.Relpath(), Project: true}
 	// root.AppendLicense(pkgjson.License)
 
 	type expand struct {
