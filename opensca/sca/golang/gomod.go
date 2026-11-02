@@ -52,17 +52,21 @@ func ParseGomod(file *model.File) *model.DepGraph {
 		return
 	}
 
-	deps := map[string]string{}
+	type dependency struct {
+		version string
+		direct  bool
+	}
+	deps := map[string]dependency{}
 
 	// addRequire 记录一条 require。
-	addRequire := func(line string) {
+	addRequire := func(line string, indirect bool) {
 		name, version := parseDepLine(line)
 		// version 里出现 "=>" 说明这行其实是 replace 被分错了流，
 		// 记进去会得到一个版本号叫 "=>" 的假组件。
 		if name == "" || version == "" || strings.Contains(version, "=>") {
 			return
 		}
-		deps[name] = version
+		deps[name] = dependency{version: version, direct: !indirect}
 	}
 
 	// applyReplace 应用一条 replace（不含字面量 "replace" 的部分）。
@@ -78,7 +82,8 @@ func ParseGomod(file *model.File) *model.DepGraph {
 			return
 		}
 		oldPath := strings.Trim(old[0], `'"`)
-		if _, ok := deps[oldPath]; !ok {
+		oldDep, ok := deps[oldPath]
+		if !ok {
 			// replace 一个没被 require 的模块不会影响构建结果。
 			return
 		}
@@ -91,14 +96,18 @@ func ParseGomod(file *model.File) *model.DepGraph {
 		newPath := strings.Trim(right[0], `'"`)
 		newVersion := strings.Trim(right[1], `'"`)
 		delete(deps, oldPath)
-		deps[newPath] = newVersion
+		deps[newPath] = dependency{version: newVersion, direct: oldDep.direct}
 	}
 
-	file.ReadLineNoComment(&model.CommentType{
-		Simple: "//",
-	}, func(raw string) {
+	file.ReadLine(func(raw string) {
 
 		line := strings.TrimSpace(raw)
+		indirect := false
+		if i := strings.Index(line, "//"); i >= 0 {
+			comment := strings.Fields(strings.TrimSpace(line[i+2:]))
+			indirect = len(comment) > 0 && comment[0] == "indirect"
+			line = strings.TrimSpace(line[:i])
+		}
 
 		switch {
 		case line == "":
@@ -121,7 +130,7 @@ func ParseGomod(file *model.File) *model.DepGraph {
 			// 原实现把 require 置为 true 后只在遇到 ")" 时才清除，于是单行
 			// require 之后的每一行（包括后面的 replace）都被当成 require，
 			// `replace A => B v1` 会被解析成名为 A、版本为 "=>" 的组件。
-			addRequire(rest)
+			addRequire(rest, indirect)
 
 		case strings.HasPrefix(line, "replace"):
 			rest := strings.TrimSpace(strings.TrimPrefix(line, "replace"))
@@ -132,7 +141,7 @@ func ParseGomod(file *model.File) *model.DepGraph {
 			applyReplace(rest)
 
 		case inRequire:
-			addRequire(line)
+			addRequire(line, indirect)
 
 		case inReplace:
 			applyReplace(line)
@@ -140,10 +149,12 @@ func ParseGomod(file *model.File) *model.DepGraph {
 
 	})
 
-	for name, version := range deps {
+	for name, dep := range deps {
 		root.AppendChild(&model.DepGraph{
-			Name:    name,
-			Version: version,
+			Name:        name,
+			Version:     dep.version,
+			Direct:      dep.direct,
+			DirectKnown: true,
 		})
 	}
 

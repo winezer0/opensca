@@ -31,6 +31,8 @@ type DepGraph struct {
 	Develop bool
 	// 直接依赖
 	Direct bool
+	// DirectKnown indicates that the parser explicitly classified Direct.
+	DirectKnown bool
 	// 父节点
 	Parents []*DepGraph
 	pset    map[*DepGraph]bool
@@ -194,7 +196,7 @@ func (dep *DepGraph) Build(deep bool, lan Language) {
 			n.Language = lan
 		}
 		// 直接依赖
-		if len(n.Parents) == 0 || len(p.Parents) == 0 {
+		if !n.DirectKnown && (len(n.Parents) == 0 || len(p.Parents) == 0) {
 			n.Direct = true
 		}
 		return true

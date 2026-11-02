@@ -135,6 +135,41 @@ replace (
 	}
 }
 
+func TestParseGomodDirectAndIndirect(t *testing.T) {
+	f := writeGomod(t, `module demo
+
+go 1.17
+
+require (
+	github.com/direct/one v1.0.0
+	github.com/indirect/one v1.1.0 // indirect
+)
+
+require github.com/indirect/two v2.0.0 // indirect
+require github.com/direct/two v2.1.0
+`)
+	graph := ParseGomod(f)
+	graph.Build(false, model.Lan_Golang)
+
+	want := map[string]bool{
+		"github.com/direct/one":   true,
+		"github.com/indirect/one": false,
+		"github.com/indirect/two": false,
+		"github.com/direct/two":   true,
+	}
+	if len(graph.Children) != len(want) {
+		t.Fatalf("got %d dependencies, want %d", len(graph.Children), len(want))
+	}
+	for _, dep := range graph.Children {
+		if got, ok := want[dep.Name]; !ok || dep.Direct != got {
+			t.Errorf("%s direct = %v, want %v (known=%v)", dep.Name, dep.Direct, got, dep.DirectKnown)
+		}
+		if !dep.DirectKnown {
+			t.Errorf("%s direct classification is not marked as known", dep.Name)
+		}
+	}
+}
+
 func TestParseGomodReplaceUnrequiredModule(t *testing.T) {
 	// replace 一个没被 require 的模块不会影响构建结果，不能凭空产生组件。
 	f := writeGomod(t, `module demo
