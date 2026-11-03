@@ -20,6 +20,7 @@ type DepDetailGraph struct {
 	ID                      string            `json:"id,omitempty" xml:"id,omitempty"`
 	Develop                 bool              `json:"dev,omitempty" xml:"dev,omitempty"`
 	Direct                  bool              `json:"direct,omitempty" xml:"direct,omitempty"`
+	DirectKnown             bool              `json:"direct_known,omitempty" xml:"direct_known,omitempty"`
 	Paths                   []string          `json:"paths,omitempty" xml:"paths,omitempty"`
 	Licenses                []*License        `json:"licenses,omitempty" xml:"licenses,omitempty"`
 	Vulnerabilities         []*Vuln           `json:"vulnerabilities,omitempty" xml:"vulnerabilities,omitempty" `
@@ -84,6 +85,7 @@ func (d *DepDetailGraph) Update(dep *model.DepGraph) {
 		d.Paths = append(d.Paths, dep.Path)
 	}
 	d.Direct = dep.Direct
+	d.DirectKnown = dep.DirectKnown
 	d.Develop = dep.Develop
 	for _, lic := range dep.Licenses {
 		d.Licenses = append(d.Licenses, &License{ShortName: lic})

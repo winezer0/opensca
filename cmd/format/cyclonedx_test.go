@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/detail"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,16 +29,33 @@ func TestCycloneDXProjectAndAnonymousNodes(t *testing.T) {
 	if len(*bom.Components) != 2 {
 		t.Fatal("lost components")
 	}
-	foundEdge := false
+	edges := map[string]map[string]bool{}
 	for _, e := range *bom.Dependencies {
-		if e.Ref == ComponentRef(root) {
-			for _, child := range *e.Dependencies {
-				foundEdge = foundEdge || child == ComponentRef(module)
+		children := map[string]bool{}
+		for _, child := range *e.Dependencies {
+			children[child] = true
+		}
+		edges[e.Ref] = children
+	}
+	if !edges[ComponentRef(root)][ComponentRef(module)] {
+		t.Fatal("anonymous container lost root dependency")
+	}
+	if !edges[ComponentRef(module)][ComponentRef(lib)] {
+		t.Fatal("indirect dependency edge was lost")
+	}
+	validRefs := map[string]bool{bom.Metadata.Component.BOMRef: true}
+	for _, c := range *bom.Components {
+		validRefs[c.BOMRef] = true
+	}
+	for _, e := range *bom.Dependencies {
+		if !validRefs[e.Ref] {
+			t.Fatalf("dependency references missing component %q", e.Ref)
+		}
+		for _, child := range *e.Dependencies {
+			if !validRefs[child] {
+				t.Fatalf("dependency edge references missing child %q", child)
 			}
 		}
-	}
-	if !foundEdge {
-		t.Fatal("anonymous container lost root dependency")
 	}
 	for _, c := range *bom.Components {
 		if c.Name == "module" && c.PackageURL != "" {
@@ -52,6 +70,72 @@ func TestCycloneDXProjectAndAnonymousNodes(t *testing.T) {
 		if c.Name == "module" && c.PackageURL == "" {
 			t.Fatal("include-project ignored")
 		}
+	}
+}
+
+func TestCycloneDXAnonymousRootKeepsDirectDependency(t *testing.T) {
+	root := &detail.DepDetailGraph{}
+	direct := component("direct")
+	root.Children = []*detail.DepDetailGraph{direct}
+
+	bom := CycloneDXBOM(root)
+	if bom.Metadata == nil || bom.Metadata.Component == nil {
+		t.Fatal("anonymous project root missing metadata component")
+	}
+	if bom.Metadata.Component.Name != "scanned-project" {
+		t.Fatalf("anonymous project name = %q, want scanned-project", bom.Metadata.Component.Name)
+	}
+	found := false
+	for _, dependency := range *bom.Dependencies {
+		if dependency.Ref != bom.Metadata.Component.BOMRef {
+			continue
+		}
+		for _, child := range *dependency.Dependencies {
+			found = found || child == ComponentRef(direct)
+		}
+	}
+	if !found {
+		t.Fatal("anonymous project root lost its direct dependency")
+	}
+}
+
+func TestCycloneDXPreservesKnownDirectness(t *testing.T) {
+	root := &model.DepGraph{Project: true, Name: "demo", Language: model.Lan_Golang}
+	direct := &model.DepGraph{Name: "example.com/direct", Version: "1.0.0", Language: model.Lan_Golang, Direct: true, DirectKnown: true}
+	indirect := &model.DepGraph{Name: "example.com/indirect", Version: "1.1.0", Language: model.Lan_Golang, DirectKnown: true}
+	root.AppendChild(direct)
+	root.AppendChild(indirect)
+	graph := detail.NewDepDetailGraph(root)
+	bom := CycloneDXBOM(graph)
+
+	rootRef := bom.Metadata.Component.BOMRef
+	foundRoot := false
+	for _, dependency := range *bom.Dependencies {
+		if dependency.Ref != rootRef {
+			continue
+		}
+		foundRoot = true
+		if len(*dependency.Dependencies) != 1 || (*dependency.Dependencies)[0] != ComponentRef(graph.Children[0]) {
+			t.Fatalf("root dependencies = %v, want only the direct module", *dependency.Dependencies)
+		}
+	}
+	if !foundRoot {
+		t.Fatal("CycloneDX dependency graph omitted the project root")
+	}
+
+	properties := map[string]string{}
+	for _, component := range *bom.Components {
+		if component.Properties == nil {
+			continue
+		}
+		for _, property := range *component.Properties {
+			if property.Name == "tanspec:direct" {
+				properties[component.Name] = property.Value
+			}
+		}
+	}
+	if properties["direct"] != "true" || properties["indirect"] != "false" {
+		t.Fatalf("directness properties = %v, want direct=true and indirect=false", properties)
 	}
 }
 

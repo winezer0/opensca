@@ -64,6 +64,39 @@ func TestParseVendorModules(t *testing.T) {
 	}
 }
 
+func TestParseVendorModulesUsesGoModDirectness(t *testing.T) {
+	dir := writeVendorModules(t, `# github.com/direct/one v1.0.0
+## explicit; go 1.17
+github.com/direct/one
+# github.com/indirect/one v1.1.0
+## explicit; go 1.17
+github.com/indirect/one
+`)
+	goMod := `module demo
+
+go 1.17
+
+require (
+	github.com/direct/one v1.0.0
+	github.com/indirect/one v1.1.0 // indirect
+)
+`
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	graph := ParseVendorModules(dir)
+	if graph == nil || len(graph.Children) != 2 {
+		t.Fatalf("vendor graph = %+v, want two dependencies", graph)
+	}
+	want := map[string]bool{"github.com/direct/one": true, "github.com/indirect/one": false}
+	for _, dep := range graph.Children {
+		if direct, ok := want[dep.Name]; !ok || dep.Direct != direct || !dep.DirectKnown {
+			t.Errorf("%s direct=%v known=%v, want direct=%v known=true", dep.Name, dep.Direct, dep.DirectKnown, direct)
+		}
+	}
+}
+
 func TestParseVendorModulesSkipsReplaceSummary(t *testing.T) {
 	dir := writeVendorModules(t, "# github.com/a/b => github.com/fork/b v1.2.0\n")
 	if graph := ParseVendorModules(dir); graph != nil {

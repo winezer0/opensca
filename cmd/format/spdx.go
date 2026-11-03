@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"io"
+	"strings"
 
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/detail"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
@@ -30,34 +31,56 @@ func SpdxXml(report Report, out string) {
 func spdxDoc(report Report) *model.SpdxDocument {
 
 	doc := model.NewSpdxDocument(report.TaskInfo.AppName)
+	root := report.DepDetailGraph
+	if root == nil {
+		return doc
+	}
 
-	report.DepDetailGraph.ForEach(func(n *detail.DepDetailGraph) bool {
-
-		if n.Name == "" {
-			return true
+	packageIDs := map[*detail.DepDetailGraph]string{}
+	usedIDs := map[string]bool{}
+	described := map[string]bool{}
+	for _, n := range dependencyGraphNodes(root) {
+		if n == nil || (n != root && n.Name == "") {
+			continue
 		}
 
-		// 项目自身作为被描述的主体。SPDX 2.3 的 documentDescribes 就是干这个的：
-		// 没有它，消费者看到的是 67 个互不相关的包，不知道哪一个是根。
-		if n == report.DepDetailGraph || n.Project {
-			doc.DocumentDescribes = append(doc.DocumentDescribes, "SPDXRef-"+n.ID)
+		id := strings.TrimPrefix(strings.TrimSpace(n.ID), "SPDXRef-")
+		if id == "" || usedIDs[id] {
+			id = detail.ID()
+		}
+		usedIDs[id] = true
+		packageIDs[n] = id
+
+		name := n.Name
+		if n == root && name == "" {
+			name = report.TaskInfo.AppName
+			if name == "" {
+				name = "scanned-project"
+			}
 		}
 
-		lics := []string{}
+		if n == root || n.Project {
+			ref := "SPDXRef-" + id
+			if !described[ref] {
+				doc.DocumentDescribes = append(doc.DocumentDescribes, ref)
+				described[ref] = true
+			}
+		}
+
+		lics := make([]string, 0, len(n.Licenses))
 		for _, lic := range n.Licenses {
 			lics = append(lics, lic.ShortName)
 		}
-		doc.AddPackage(n.ID, n.Vendor, n.Name, n.Version, model.Language(n.Language), lics)
+		doc.AddPackage(id, n.Vendor, name, n.Version, model.Language(n.Language), lics)
+	}
 
-		for _, c := range n.Children {
-			if c.Name == "" {
-				continue
-			}
-			doc.AddRelation(n.ID, c.ID)
+	for _, edge := range dependencyGraphEdges(root) {
+		parentID, parentOK := packageIDs[edge.Parent]
+		childID, childOK := packageIDs[edge.Child]
+		if parentOK && childOK {
+			doc.AddRelation(parentID, childID)
 		}
-
-		return true
-	})
+	}
 
 	return doc
 }

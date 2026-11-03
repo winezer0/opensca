@@ -32,8 +32,7 @@ func ParseSpdx(f *model.File) *model.DepGraph {
 		}
 		tags[k] = strings.TrimSpace(v)
 	}
-	// 记录relationship
-	relation := map[string][]string{}
+	var relations []model.Relationship
 
 	start := false
 	f.ReadLine(func(line string) {
@@ -65,11 +64,13 @@ func ParseSpdx(f *model.File) *model.DepGraph {
 				checkAndSet("language", string(language))
 			}
 		case "Relationship":
-			ids := strings.Split(v, "DEPENDS_ON")
-			if len(ids) == 2 {
-				parent := strings.TrimSpace(ids[0])
-				child := strings.TrimSpace(ids[1])
-				relation[parent] = append(relation[parent], child)
+			fields := strings.Fields(v)
+			if len(fields) == 3 {
+				relations = append(relations, model.Relationship{
+					SPDXElementID:      fields[0],
+					RelationshipType:   fields[1],
+					RelatedSPDXElement: fields[2],
+				})
 			}
 		}
 	})
@@ -79,10 +80,8 @@ func ParseSpdx(f *model.File) *model.DepGraph {
 		return nil
 	}
 
-	for parent, children := range relation {
-		for _, child := range children {
-			depIdMap[parent].AppendChild(depIdMap[child])
-		}
+	for _, relation := range relations {
+		appendSpdxDependency(depIdMap, relation)
 	}
 
 	var roots []*model.DepGraph
@@ -153,7 +152,7 @@ func parseSpdxDoc(f *model.File, doc *model.SpdxDocument) *model.DepGraph {
 	}
 
 	for _, relation := range doc.Relationships {
-		depIdMap[relation.SPDXElementID].AppendChild(depIdMap[relation.RelatedSPDXElement])
+		appendSpdxDependency(depIdMap, relation)
 	}
 
 	root := &model.DepGraph{Path: f.Relpath()}
@@ -164,4 +163,21 @@ func parseSpdxDoc(f *model.File, doc *model.SpdxDocument) *model.DepGraph {
 	}
 
 	return root
+}
+
+func appendSpdxDependency(depIdMap map[string]*model.DepGraph, relation model.Relationship) {
+	parentID, childID := relation.SPDXElementID, relation.RelatedSPDXElement
+	switch strings.ToUpper(strings.TrimSpace(relation.RelationshipType)) {
+	case "DEPENDS_ON":
+	case "DEPENDENCY_OF":
+		parentID, childID = childID, parentID
+	default:
+		return
+	}
+
+	parent, child := depIdMap[parentID], depIdMap[childID]
+	if parent == nil || child == nil {
+		return
+	}
+	parent.AppendChild(child)
 }

@@ -87,6 +87,15 @@ func ParseVendorModules(dir string) *model.DepGraph {
 		return nil
 	}
 
+	directByName := map[string]bool{}
+	goModPath := filepath.Join(dir, "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		goMod := ParseGomod(model.NewFile(goModPath, "go.mod"))
+		for _, dep := range goMod.Children {
+			directByName[dep.Name] = dep.Direct
+		}
+	}
+
 	root := &model.DepGraph{Project: true}
 	for _, m := range mods {
 		root.AppendChild(&model.DepGraph{
@@ -96,6 +105,12 @@ func ParseVendorModules(dir string) *model.DepGraph {
 			// 一个 tidy 过的 vendor 工程里每个模块都是 explicit，直接/间接只能
 			// 从 go.mod 的 "// indirect" 注释判断，与 ParseGomod 保持一致。
 		})
+	}
+	for _, dep := range root.Children {
+		if direct, ok := directByName[dep.Name]; ok {
+			dep.Direct = direct
+			dep.DirectKnown = true
+		}
 	}
 	return root
 }

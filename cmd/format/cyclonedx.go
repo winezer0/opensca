@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/CycloneDX/cyclonedx-go"
@@ -43,7 +44,7 @@ func CycloneDXBOM(dep *detail.DepDetailGraph) *cyclonedx.BOM {
 		}
 		visited[n] = true
 		ref := ComponentRef(n)
-		if edges[ref] == nil {
+		if (n == dep || n.Name != "") && edges[ref] == nil {
 			edges[ref] = map[string]bool{}
 		}
 		if n != dep && ref != rootRef && !seen[ref] && n.Name != "" {
@@ -56,24 +57,25 @@ func CycloneDXBOM(dep *detail.DepDetailGraph) *cyclonedx.BOM {
 			if n.Project && !config.Conf().IncludeProject {
 				purl = ""
 			}
-			components = append(components, cyclonedx.Component{BOMRef: ref, Type: typ, Group: n.Vendor, Name: n.Name[strings.LastIndex(n.Name, "/")+1:], Version: n.Version, PackageURL: purl})
-		}
-		pending := append([]*detail.DepDetailGraph(nil), n.Children...)
-		anonymous := map[*detail.DepDetailGraph]bool{}
-		for len(pending) > 0 {
-			child := pending[0]
-			pending = pending[1:]
-			if child.Name == "" && !anonymous[child] {
-				anonymous[child] = true
-				pending = append(pending, child.Children...)
-			} else if child.Name != "" {
-				if cr := ComponentRef(child); cr != ref {
-					edges[ref][cr] = true
-				}
+			component := cyclonedx.Component{BOMRef: ref, Type: typ, Group: n.Vendor, Name: n.Name[strings.LastIndex(n.Name, "/")+1:], Version: n.Version, PackageURL: purl}
+			if n.DirectKnown {
+				properties := []cyclonedx.Property{{Name: "tanspec:direct", Value: strconv.FormatBool(n.Direct)}}
+				component.Properties = &properties
 			}
+			components = append(components, component)
 		}
 		return true
 	})
+	for _, edge := range dependencyGraphEdges(dep) {
+		parentRef, childRef := ComponentRef(edge.Parent), ComponentRef(edge.Child)
+		if parentRef == childRef {
+			continue
+		}
+		if edges[parentRef] == nil {
+			edges[parentRef] = map[string]bool{}
+		}
+		edges[parentRef][childRef] = true
+	}
 	valid := map[string]bool{rootRef: true}
 	for _, c := range components {
 		valid[c.BOMRef] = true
