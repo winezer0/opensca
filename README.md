@@ -31,9 +31,9 @@
 | 【新增】 | Maven 本地配置 | 缺少本地仓库选择 | 增加 `-maven-repo`、`-maven-settings`、`-maven-command`、`-profiles`、`-java-version`；缓存目录支持 `-cache-dir` |
 | 【修复】 | Maven 静态解析 | 父 POM、本地解析及 profile 激活存在缺漏 | 补充本地仓库解析、父 POM 路径和版本处理、profile 条件判断；无法完整解析时保留诊断，见下方限制 |
 | 【修复】 | npm 锁文件 | 单独输入锁文件可能无结果，嵌套依赖图可能丢失 | 支持无 `package.json` 的 `package-lock.json` v1/v2/v3，保留嵌套多版本、workspace 及开发/运行时依赖关系 |
-| 【修复】 | Go 依赖选择 | 将 `go.sum` 的历史版本混入当前依赖，重复扫描 vendor 内清单 | 静态解析优先 `vendor/modules.txt`，其次 `go.mod`，`go.sum` 仅兜底；修复 `replace`、单行语句及 `+incompatible` 版本处理 |
-| 【修复】 | CycloneDX | 组件重复、引用与依赖边不一致 | 稳定引用、组件和边去重，保留根依赖；工程节点默认不列入 `components`，可用 `-include-project` 加入 |
-| 【修复】 | SPDX / PURL | 文档字段、包引用或包身份可能不被消费者接受 | 修复 SPDX JSON 与 tag-value 文档，统一 PURL 生成；无法确定生态或具体版本时报告诊断 |
+| 【修复】 | Go 依赖选择与分类 | 将 `go.sum` 的历史版本混入当前依赖，重复扫描 vendor 内清单，未保留间接依赖标记 | 静态解析优先 `vendor/modules.txt`，其次 `go.mod`，`go.sum` 仅兜底；解析 `// indirect` 并在 `replace` 后保留分类，修复单行语句及 `+incompatible` 版本处理 |
+| 【修复】 | CycloneDX | 组件重复、引用与依赖边不一致，未导出明确的直接依赖标记 | 稳定引用、组件和边去重并保留依赖关系；已知直接性通过 `tanspec:direct` 属性导出；工程节点默认不列入 `components`，可用 `-include-project` 加入 |
+| 【修复】 | SPDX / PURL | 文档字段、包引用、依赖关系或包身份可能不被消费者接受 | 修复 SPDX JSON 与 tag-value 文档，导出 `DEPENDS_ON` 关系并统一 PURL 生成；无法确定生态或具体版本时报告诊断 |
 | 【修改】 | SBOM 输入 | 扫描目录可能把已有 SBOM 再算一次 | 默认目录扫描排除 SBOM；单文件输入可自动识别，也可用 `-input-type sbom` 显式导入 |
 | 【新增】 | 完整性诊断 | 降级、跳过和未解析依赖不够直观 | 报告记录诊断，CLI 区分成功、失败和不完整；不能把“输出了 SBOM”视为“完整解析或无漏洞” |
 
