@@ -2,20 +2,35 @@ package cache
 
 import (
 	"fmt"
-	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 )
 
 var (
-	cacheDir  string = ".opensca-cache"
-	cacheOnce        = sync.Once{}
+	cacheDir       string = ".opensca-cache"
+	cacheOnce             = sync.Once{}
+	taskCacheDirMu        = sync.RWMutex{}
+	taskCacheDir   string
 )
+
+// SetTaskCacheDir temporarily sets the cache directory used by OpenSCA.
+func SetTaskCacheDir(directory string) func() {
+	taskCacheDirMu.Lock()
+	previous := taskCacheDir
+	taskCacheDir = directory
+	taskCacheDirMu.Unlock()
+	return func() {
+		taskCacheDirMu.Lock()
+		taskCacheDir = previous
+		taskCacheDirMu.Unlock()
+	}
+}
 
 func initCache() {
 	cacheDir = config.Conf().CacheDir
@@ -54,17 +69,28 @@ func Load(path string, do func(reader io.Reader)) bool {
 }
 
 func Path(vendor, name, version string, language model.Language) string {
-	cacheOnce.Do(initCache)
+	base := currentCacheDir()
 	var path string
 	switch language {
 	case model.Lan_Java:
-		path = filepath.Join(cacheDir, "maven", vendor, name, version, fmt.Sprintf("%s-%s.pom", name, version))
+		path = filepath.Join(base, "maven", vendor, name, version, fmt.Sprintf("%s-%s.pom", name, version))
 	case model.Lan_JavaScript:
-		path = filepath.Join(cacheDir, "npm", fmt.Sprintf("%s.json", name))
+		path = filepath.Join(base, "npm", fmt.Sprintf("%s.json", name))
 	case model.Lan_Php:
-		path = filepath.Join(cacheDir, "composer", fmt.Sprintf("%s.json", name))
+		path = filepath.Join(base, "composer", fmt.Sprintf("%s.json", name))
 	default:
-		path = filepath.Join(cacheDir, "none", fmt.Sprintf("%s-%s-%s", vendor, name, version))
+		path = filepath.Join(base, "none", fmt.Sprintf("%s-%s-%s", vendor, name, version))
 	}
 	return path
+}
+
+func currentCacheDir() string {
+	taskCacheDirMu.RLock()
+	base := taskCacheDir
+	taskCacheDirMu.RUnlock()
+	if base != "" {
+		return base
+	}
+	cacheOnce.Do(initCache)
+	return cacheDir
 }

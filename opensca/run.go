@@ -12,56 +12,76 @@ import (
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/cache"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/filter"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca/sbom"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/walk"
 )
 
-// 任务检测参数
+var taskRunGate = make(chan struct{}, 1)
+
+// TaskArg configures an OpenSCA dependency analysis task.
 type TaskArg struct {
 	// auto: project directories exclude SBOMs; explicit SBOM files are accepted.
 	InputType string
 
-	// 检测数据源 文件路径或url 兼容http(s)|ftp|file
+	// DataOrigin is the local path or URL to analyze.
 	DataOrigin string
-	// 检测对象名称 用于结果展示 缺省时取DataOrigin尾单词
+	// Name is the display name and defaults to the final path segment.
 	Name string
-	// 超时时间 单位s
+	// Timeout limits task execution in seconds.
 	Timeout int
-	// 使用的sca(为空时使用默认配置)
+	// Sca selects parsers; an empty slice uses the default parser set.
 	Sca []sca.Sca
 
-	// 额外的文件过滤函数 默认为压缩文件名过滤函数
+	// ExtractFileFilter optionally filters files before parser selection.
 	ExtractFileFilter walk.ExtractFileFilter
-	// 忽略文件过滤函数 命中时跳过扫描
+	// IgnoreFileFilter skips files that match the supplied filter.
 	IgnoreFileFilter walk.ExtractFileFilter
-	// 额外的结果回调函数
+	// ResCallFunc receives each parser result.
 	ResCallFunc model.ResCallback
+	// CacheDir is the task-scoped metadata cache directory.
+	CacheDir string
 }
 
 type TaskResult struct {
 	Diagnostics []string
-	// 任务参数
+	// Arg contains the normalized task arguments.
 	Arg *TaskArg
-	// 检出组件
+	// Deps contains the discovered dependency graphs.
 	Deps []*model.DepGraph
-	// 错误信息
+	// Error reports task execution failures.
 	Error error
-	// 任务开始时间
+	// Start is the task start time.
 	Start time.Time
-	// 任务结束时间
+	// End is the task end time.
 	End time.Time
-	// 检测文件大小
+	// Size is the total scanned input size.
 	Size int64
 }
 
-// RunTask 运行检测任务
-// arg: 任务参数
+// RunTask runs a dependency analysis task.
 func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if arg == nil {
+		arg = &TaskArg{DataOrigin: "./"}
+	}
+	result.Start = time.Now()
+	select {
+	case taskRunGate <- struct{}{}:
+		defer func() { <-taskRunGate }()
+	case <-ctx.Done():
+		result.Error = ctx.Err()
+		result.End = time.Now()
+		result.Arg = arg
+		return result
+	}
+	restoreCacheDir := cache.SetTaskCacheDir(arg.CacheDir)
+	defer restoreCacheDir()
 	ctx, diagnostics := model.WithDiagnostics(ctx)
 	var resultMu sync.Mutex
-
-	result.Start = time.Now()
 	defer func() {
 		result.Diagnostics = diagnostics.List()
 		if ctx.Err() != nil {
@@ -70,10 +90,6 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 		result.End = time.Now()
 		result.Arg = arg
 	}()
-
-	if arg == nil {
-		arg = &TaskArg{DataOrigin: "./"}
-	}
 
 	if arg.ExtractFileFilter == nil {
 		arg.ExtractFileFilter = filter.CompressFile
