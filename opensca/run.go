@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/winezer0/opensca/versionaudit"
+	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/endpoint"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/sca"
@@ -42,6 +45,8 @@ type TaskArg struct {
 	ResCallFunc model.ResCallback
 	// CacheDir is the task-scoped metadata cache directory.
 	CacheDir string
+	// VersionDirectory optionally supplies a configured published-version catalog.
+	VersionDirectory versionaudit.Directory
 }
 
 type TaskResult struct {
@@ -82,6 +87,21 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 	defer restoreCacheDir()
 	ctx, diagnostics := model.WithDiagnostics(ctx)
 	var resultMu sync.Mutex
+	directory := arg.VersionDirectory
+	if directory == nil {
+		settings := config.Conf().VersionAudit
+		settings.Offline = settings.Offline || config.Conf().Offline
+		settings, err := settings.Environment()
+		if err != nil {
+			result.Error = err
+			return
+		}
+		directory, err = settings.Directory()
+		if err != nil {
+			result.Error = err
+			return
+		}
+	}
 	defer func() {
 		result.Diagnostics = diagnostics.List()
 		if ctx.Err() != nil {
@@ -178,11 +198,13 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 					dep.ForEachNode(func(p, n *model.DepGraph) bool { count++; return true })
 					logs.Infof("file:%s deps:%d language:%s", file.Relpath(), count, sca.Language())
 					dep.Build(false, sca.Language())
-					resultMu.Lock()
-					result.Deps = append(result.Deps, dep)
-					resultMu.Unlock()
-					if arg.ResCallFunc != nil {
-						arg.ResCallFunc(file, dep)
+					for _, resolved := range endpoint.Expand(ctx, dep, directory) {
+						resultMu.Lock()
+						result.Deps = append(result.Deps, resolved)
+						resultMu.Unlock()
+						if arg.ResCallFunc != nil {
+							arg.ResCallFunc(file, resolved)
+						}
 					}
 				}
 			})

@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 
 	"github.com/titanous/json5"
+	"github.com/winezer0/opensca/versionaudit"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/common"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 )
 
 type Config struct {
+	VersionAudit versionaudit.Settings `json:"version_audit"`
 	BaseConfig
 	Offline          bool           `json:"offline"`
 	InputType        string         `json:"input_type"`

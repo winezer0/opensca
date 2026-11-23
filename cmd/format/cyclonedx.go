@@ -11,6 +11,7 @@ import (
 	"github.com/CycloneDX/cyclonedx-go"
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/detail"
+	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 )
 
 // ComponentRef is stable across scans, including components without a PURL.
@@ -54,13 +55,17 @@ func CycloneDXBOM(dep *detail.DepDetailGraph) *cyclonedx.BOM {
 				typ = cyclonedx.ComponentTypeApplication
 			}
 			purl := n.Purl()
+			if purl == "" && n.Version == "" && !n.Project {
+				purl = model.VersionlessPurl(n.Vendor, n.Name, model.Language(n.Language))
+			}
 			if n.Project && !config.Conf().IncludeProject {
 				purl = ""
 			}
 			component := cyclonedx.Component{BOMRef: ref, Type: typ, Group: n.Vendor, Name: n.Name[strings.LastIndex(n.Name, "/")+1:], Version: n.Version, PackageURL: purl}
+			properties := []cyclonedx.Property{{Name: "tanspec:version-source", Value: n.VersionSource}, {Name: "tanspec:declared-version", Value: n.DeclaredVersion}}
+			component.Properties = &properties
 			if n.DirectKnown {
-				properties := []cyclonedx.Property{{Name: "tanspec:direct", Value: strconv.FormatBool(n.Direct)}}
-				component.Properties = &properties
+				properties = append(properties, cyclonedx.Property{Name: "tanspec:direct", Value: strconv.FormatBool(n.Direct)})
 			}
 			components = append(components, component)
 		}

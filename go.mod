@@ -6,6 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.3.2
 	github.com/CycloneDX/cyclonedx-go v0.7.2
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/aquasecurity/go-pep440-version v0.0.1
 	github.com/axgle/mahonia v0.0.0-20180208002826-3358181d7394
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/glebarez/go-sqlite v1.21.2
@@ -24,13 +25,17 @@ require (
 )
 
 require (
+	deps.dev/util/semver v0.0.0-20261117043703-02e0c2773eee // indirect
+	github.com/aquasecurity/go-version v0.0.1 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
+	github.com/shyim/go-version v0.0.0-20260726121354-c0841a28db20 // indirect
 	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 )
 
 require (
@@ -45,7 +50,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.18 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/winezer0/opensca/versionaudit v0.0.0
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
@@ -54,3 +60,5 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.27.0 // indirect
 )
+
+replace github.com/winezer0/opensca/versionaudit => ./versionaudit

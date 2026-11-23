@@ -99,3 +99,17 @@ func ParsePurl(purl string) (vendor, name, version string, language Language) {
 	}
 	return
 }
+
+// VersionlessPurl retains a package identity that cannot enter version matching.
+func VersionlessPurl(vendor, name string, language Language) string {
+	typ := purlMap[language]
+	if typ == "" || name == "" || language == Lan_Java && vendor == "" {
+		return ""
+	}
+	if vendor == "" {
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			vendor, name = name[:i], name[i+1:]
+		}
+	}
+	return packageurl.NewPackageURL(typ, vendor, name, "", nil, "").ToString()
+}

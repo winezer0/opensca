@@ -120,22 +120,9 @@ func ParseComposerJsonWithOrigin(json *ComposerJson) *model.DepGraph {
 			}
 
 			version := req[name]
-			subpkg := composerOrigin(name, version)
-
-			if subpkg == nil {
-				dep := _dep(name, version)
-				dep.Develop = dev
-				n.AppendChild(dep)
-				continue
-			}
-
-			dep := _dep(subpkg.Name, subpkg.Version)
-			if dep.Expand == nil {
-				dep.Expand = subpkg
-				dep.Develop = dev
-			} else if !dev {
-				dep.Develop = dev
-			}
+			dep := _dep(name, version)
+			dep.DeclaredVersion = version
+			dep.Develop = dev
 			n.AppendChild(dep)
 		}
 	}

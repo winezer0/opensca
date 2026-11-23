@@ -125,6 +125,7 @@ func ParsePackageJsonWithNode(pkgjson *PackageJson, nodeMap map[string]*PackageJ
 
 	findDep := func(dev bool, name, version, basedir string) *model.DepGraph {
 		var subjs *PackageJson
+		declared := false
 		if subjs == nil && len(nodeMap) > 0 {
 			// 从node_modules中查找
 			_, subjs = findFromNodeModules(name, basedir, nodeMap)
@@ -143,7 +144,8 @@ func ParsePackageJsonWithNode(pkgjson *PackageJson, nodeMap map[string]*PackageJ
 		}
 		if subjs == nil {
 			// 从外部数据源下载
-			subjs = npmOrigin(name, version)
+			declared = true
+			subjs = &PackageJson{Name: name, Version: version}
 		}
 		if subjs == nil {
 			// 部分投毒组件会从官方库下架 这种构造一个虚拟的PacakgeJson保证检出
@@ -157,6 +159,9 @@ func ParsePackageJsonWithNode(pkgjson *PackageJson, nodeMap map[string]*PackageJ
 			dep = _dep(subjs.Name, subjs.Version, "dev")
 		} else {
 			dep = _dep(subjs.Name, subjs.Version)
+		}
+		if declared {
+			dep.DeclaredVersion = version
 		}
 		if dep.Expand == nil {
 			// dep.AppendLicense(subjs.License)

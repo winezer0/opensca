@@ -80,6 +80,8 @@ func (d *DepDetailGraph) Update(dep *model.DepGraph) {
 	d.Name = dep.Name
 	d.Vendor = dep.Vendor
 	d.Version = dep.Version
+	d.VersionSource = dep.VersionSource
+	d.DeclaredVersion = dep.DeclaredVersion
 	d.Language = string(dep.Language)
 	if dep.Path != "" {
 		d.Paths = append(d.Paths, dep.Path)
@@ -217,9 +219,11 @@ func vulnLanguageKey(language model.Language) []string {
 }
 
 type Dep struct {
-	PackageURL  string `json:"purl,omitempty" xml:"purl,omitempty"`
-	PackageType string `json:"package_type,omitempty" xml:"package_type,omitempty"`
-	Classifier  string `json:"classifier,omitempty" xml:"classifier,omitempty"`
+	DeclaredVersion string `json:"declared_version,omitempty" xml:"declared_version,omitempty"`
+	VersionSource   string `json:"version_source,omitempty" xml:"version_source,omitempty"`
+	PackageURL      string `json:"purl,omitempty" xml:"purl,omitempty"`
+	PackageType     string `json:"package_type,omitempty" xml:"package_type,omitempty"`
+	Classifier      string `json:"classifier,omitempty" xml:"classifier,omitempty"`
 	// 厂商
 	Vendor string `json:"vendor,omitempty" xml:"vendor,omitempty"`
 	// 名称
@@ -245,6 +249,9 @@ func SearchDetail(detailRoot *DepDetailGraph) (err error) {
 	var ds []Dep
 
 	detailRoot.ForEach(func(n *DepDetailGraph) bool {
+		if n.Project || n.Version == "" || n.Purl() == "" {
+			return true
+		}
 		details = append(details, n)
 		ds = append(ds, n.Dep)
 		return true

@@ -9,11 +9,15 @@ import (
 
 // DepGraph 依赖关系图
 type DepGraph struct {
-	PackageURL  string
-	PackageType string
-	Classifier  string
-	Project     bool
-	Issues      []string
+	// DeclaredVersion preserves manifest syntax until endpoint selection.
+	DeclaredVersion string
+	// VersionSource records actual, declared_exact, published_endpoint or boundary_fallback.
+	VersionSource string
+	PackageURL    string
+	PackageType   string
+	Classifier    string
+	Project       bool
+	Issues        []string
 	// 厂商
 	Vendor string
 	// 名称

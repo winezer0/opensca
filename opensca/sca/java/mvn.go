@@ -439,13 +439,21 @@ func parsePom(ctx context.Context, pom *Pom, getpom getPomFunc) *model.DepGraph 
 				logs.Debugf("find %s", dep.ImportPathStack())
 			} else {
 				logs.Warnf("find invalid %s", dep.ImportPathStack())
-				model.AddDiagnostic(ctx, "unresolved Maven dependency: "+dep.GAV())
+				if dep.GroupId != "" && dep.ArtifactId != "" && strings.ContainsAny(dep.Version, "[(") {
+					n.AppendChild(&model.DepGraph{Vendor: dep.GroupId, Name: dep.ArtifactId, DeclaredVersion: dep.Version, Language: model.Lan_Java})
+				} else {
+					model.AddDiagnostic(ctx, "unresolved Maven dependency: "+dep.GAV())
+				}
 				continue
 			}
 
-			sub := &model.DepGraph{Vendor: dep.GroupId, Name: dep.ArtifactId, Version: dep.Version, Language: model.Lan_Java, PackageType: dep.Type, Classifier: dep.Classifier}
+			sub := &model.DepGraph{Vendor: dep.GroupId, Name: dep.ArtifactId, Version: dep.Version, DeclaredVersion: dep.Version, Language: model.Lan_Java, PackageType: dep.Type, Classifier: dep.Classifier}
 			sub.Develop = dep.Scope == "test"
 
+			if strings.ContainsAny(dep.Version, "[(") {
+				n.AppendChild(sub)
+				continue
+			}
 			if subpom := getpom(*dep, np.Repositories, np.Mirrors); subpom != nil {
 				subpom.PomDependency = *dep
 				// 继承根pom的exclusion

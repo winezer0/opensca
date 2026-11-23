@@ -19,7 +19,9 @@ func ParsePipfile(file *model.File) *model.DepGraph {
 
 	root := &model.DepGraph{Path: file.Relpath()}
 
-	_dep := model.NewDepGraphMap(nil, func(s ...string) *model.DepGraph { return &model.DepGraph{Name: s[0], Version: s[1]} }).LoadOrStore
+	_dep := model.NewDepGraphMap(nil, func(s ...string) *model.DepGraph {
+		return &model.DepGraph{Name: s[0], Version: strings.TrimPrefix(s[1], "=="), DeclaredVersion: s[1]}
+	}).LoadOrStore
 
 	file.OpenReader(func(reader io.Reader) {
 		if _, err := toml.NewDecoder(reader).Decode(&pip); err != nil {
@@ -32,10 +34,7 @@ func ParsePipfile(file *model.File) *model.DepGraph {
 		if table, ok := value.(map[string]any); ok {
 			v, _ = table["version"].(string)
 		}
-		if v == "*" {
-			return ""
-		}
-		return strings.TrimPrefix(v, "==")
+		return v
 	}
 	for name, version := range pip.Packages {
 		root.AppendChild(_dep(name, versionOf(version)))
@@ -78,55 +77,28 @@ func ParsePipfileLock(file *model.File) *model.DepGraph {
 	return root
 }
 
+// ParseRequirementTxt parses requirements.txt using the scan-version policy.
 func ParseRequirementTxt(file *model.File) *model.DepGraph {
-
-	root := &model.DepGraph{Path: file.Relpath()}
-
-	file.ReadLine(func(line string) {
-
-		if strings.HasPrefix(line, `-r`) {
-			return
-		}
-
-		if i := strings.Index(line, "#"); i != -1 {
-			line = line[:i]
-		}
-
-		line = strings.TrimSpace(strings.Split(line, ";")[0])
-		if strings.ContainsAny(line, `#$%`) || len(line) == 0 {
-			return
-		}
-
-		if i := strings.IndexAny(line, "=!<>~"); i == -1 {
-			root.AppendChild(&model.DepGraph{Name: line})
-		} else {
-			root.AppendChild(&model.DepGraph{Name: line[:i], Version: strings.TrimPrefix(line[i:], "==")})
-		}
-
-	})
-
-	return root
+	return parseRequirementsFile(file)
 }
 
+// ParseRequirementIn parses requirements.in using the same scan-version policy.
 func ParseRequirementIn(file *model.File) *model.DepGraph {
+	return parseRequirementsFile(file)
+}
 
+// parseRequirementsFile shares declaration handling between requirements manifests.
+func parseRequirementsFile(file *model.File) *model.DepGraph {
 	root := &model.DepGraph{Path: file.Relpath()}
-
-	file.ReadLine(func(line string) {
-
-		if strings.HasPrefix(line, `#`) {
+	file.OpenReader(func(reader io.Reader) {
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			logs.Warnf("read requirements file %s: %s", file.Relpath(), err)
 			return
 		}
-
-		words := strings.Fields(line)
-		if len(words) > 0 {
-			dep := &model.DepGraph{}
-			dep.Name = words[0]
-			dep.Version = strings.Join(words[1:], "")
-			root.AppendChild(dep)
+		for _, item := range parseRequirementDeclarations(string(data)) {
+			root.AppendChild(&model.DepGraph{Name: item.name, Version: item.version, DeclaredVersion: item.constraint})
 		}
-
 	})
-
 	return root
 }

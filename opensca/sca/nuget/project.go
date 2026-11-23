@@ -203,7 +203,7 @@ func (info *projectInfo) fallbackGraph() *model.DepGraph {
 			continue
 		}
 		seen[key] = true
-		n := &model.DepGraph{Name: name, Direct: true, Language: model.Lan_DotNet}
+		n := &model.DepGraph{Name: name, Direct: true, Language: model.Lan_DotNet, DeclaredVersion:version}
 		// A singleton range is the one static syntax that pins an exact version.
 		if strings.HasPrefix(version, "[") && strings.HasSuffix(version, "]") {
 			pinned := strings.TrimSuffix(strings.TrimPrefix(version, "["), "]")

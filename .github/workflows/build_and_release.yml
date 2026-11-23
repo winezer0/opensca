@@ -40,8 +40,24 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test Python requirements parsing and SBOM output
+        run: go test ./opensca/sca/python ./cmd/format ./cmd/detail .
+
   build:
-    needs: resolve-version
+    needs: [resolve-version, test]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

@@ -196,26 +196,7 @@ func ReadPomAt(reader io.Reader, filename string) *Pom {
 	p.Properties["pom.version"] = &Property{Key: "pom.version", Value: p.Version}
 	p.Properties["project.parent.version"] = &Property{Key: "project.parent.version", Value: p.Parent.Version}
 	p.Properties["parent.version"] = &Property{Key: "parent.version", Value: p.Parent.Version}
-
-	// 处理版本范围
-	for _, d := range p.Dependencies {
-		if strings.ContainsAny(d.Version, "()[]") {
-			if !strings.Contains(d.Version, ",") {
-				d.Version = strings.Trim(d.Version, "()[]")
-			} else {
-				lr := strings.Split(strings.Split(d.Version, "!")[0], ",")
-				if len(lr) == 2 {
-					l, r := lr[0], lr[1]
-					if strings.HasPrefix(l, "[") {
-						d.Version = strings.TrimLeft(l, "[")
-					}
-					if strings.HasSuffix(r, "]") {
-						d.Version = strings.TrimRight(l, "]")
-					}
-				}
-			}
-		}
-	}
+	// Preserve declarations until shared endpoint selection.
 
 	// 存在厂商和组件相同的依赖时保留最后声明的
 	depSet := map[string]bool{}

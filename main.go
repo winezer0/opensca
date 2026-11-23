@@ -284,7 +284,7 @@ func taskReport(r opensca.TaskResult) format.Report {
 		report.TaskInfo.ErrorString = r.Error.Error()
 	}
 
-	// 合并检测结果
+	// Merge dependency results into the report graph.
 	root := &model.DepGraph{}
 	if len(r.Deps) > 1 {
 		for _, dep := range r.Deps {
@@ -299,7 +299,8 @@ func taskReport(r opensca.TaskResult) format.Report {
 			report.TaskInfo.Diagnostics = append(report.TaskInfo.Diagnostics, issue)
 		}
 		if n.Name != "" && !n.Project && n.Purl() == "" {
-			report.TaskInfo.Diagnostics = append(report.TaskInfo.Diagnostics, "component has no valid PURL: "+n.Name+"@"+n.Version)
+			// Keep identity warnings separate from parser coverage diagnostics.
+			logs.Warn("component has no valid PURL: " + n.Name + "@" + n.Version)
 		}
 		return true
 	})
