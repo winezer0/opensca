@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/winezer0/opensca/versionaudit"
+	"github.com/xmirrorsecurity/opensca-cli/v3/internal/versionaudit"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
 )
 

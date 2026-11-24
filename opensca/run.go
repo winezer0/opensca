@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/winezer0/opensca/versionaudit"
 	"github.com/xmirrorsecurity/opensca-cli/v3/cmd/config"
+	"github.com/xmirrorsecurity/opensca-cli/v3/internal/versionaudit"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/endpoint"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/logs"
 	"github.com/xmirrorsecurity/opensca-cli/v3/opensca/model"
@@ -46,7 +46,7 @@ type TaskArg struct {
 	// CacheDir is the task-scoped metadata cache directory.
 	CacheDir string
 	// VersionDirectory optionally supplies a configured published-version catalog.
-	VersionDirectory versionaudit.Directory
+	VersionDirectory VersionDirectory
 }
 
 type TaskResult struct {
@@ -87,7 +87,10 @@ func RunTask(ctx context.Context, arg *TaskArg) (result TaskResult) {
 	defer restoreCacheDir()
 	ctx, diagnostics := model.WithDiagnostics(ctx)
 	var resultMu sync.Mutex
-	directory := arg.VersionDirectory
+	var directory versionaudit.Directory
+	if arg.VersionDirectory != nil {
+		directory = versionDirectoryAdapter{source: arg.VersionDirectory}
+	}
 	if directory == nil {
 		settings := config.Conf().VersionAudit
 		settings.Offline = settings.Offline || config.Conf().Offline

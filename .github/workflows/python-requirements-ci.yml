@@ -6,12 +6,14 @@ on:
       - '**/*.go'
       - go.mod
       - go.sum
+      - internal/versionaudit/**
       - .github/workflows/**
   pull_request:
     paths:
       - '**/*.go'
       - go.mod
       - go.sum
+      - internal/versionaudit/**
       - .github/workflows/**
   workflow_dispatch:
 
@@ -32,5 +34,5 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Test Python requirements parsing and SBOM output
-        run: go test ./opensca/sca/python ./cmd/format ./cmd/detail .
+      - name: Test local version audit, parsers and SBOM output
+        run: go test -mod=readonly ./internal/versionaudit ./opensca/endpoint ./opensca/sca/... ./cmd/format ./cmd/detail ./cmd/config ./opensca .

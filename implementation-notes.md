@@ -28,3 +28,10 @@
 - TanSpec component persistence adds `declared_version` and `version_source` columns. Per the development database policy, no migration is supplied: startup requires a fresh database or a schema already matching this build. Existing databases and history are not modified.
 
 Validation: affected endpoint/parser/config/detail/format packages passed (170 tests); shared module passed `go test -race -cover ./...` with 82.1% statement coverage. Rebuilt the local CLI and passed TanSpec actual-binary parity tests.
+
+## Repository-local version audit (2026-11-24)
+
+- Supersedes the nested shared module. `internal/versionaudit` is part of this repository's root Go module; its original source and contract tests are retained. No requirement or replacement points to the shared `github.com/winezer0/opensca/versionaudit` module.
+- MurphySec and TanSpec deliberately own independent copies, per user instruction. Changes to the policy must be mirrored and validated with the same contract cases; builds never read sibling repositories.
+- The SDK exposes a string-only `VersionDirectory` interface. Its private adapter translates ecosystem/package identity to internal policy types, so consumers can supply their own catalogs without importing or aliasing this private implementation.
+- Both CI workflows now explicitly test the local version policy, endpoint graph expansion, parser packages, SDK and SBOM output. The removed nested Go module can no longer be silently skipped by root-module test traversal.
